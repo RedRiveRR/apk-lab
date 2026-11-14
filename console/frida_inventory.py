@@ -122,8 +122,10 @@ def run_tool(argv, timeout=DEFAULT_TIMEOUT):
     # Own process group/session: a pip launcher runs the real tool as a child,
     # and that child must die with it on timeout or it keeps our pipes open.
     windows = os.name == "nt"
+    # argv is a list run without a shell: argv[0] comes from find_tool() (frida-ls-devices
+    # or frida-ps) and --host has already passed parse_lab_host(), so nothing reaches a shell.
     try:
-        proc = subprocess.Popen(
+        proc = subprocess.Popen(  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if windows else 0,
             start_new_session=not windows,

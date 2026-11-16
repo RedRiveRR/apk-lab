@@ -128,3 +128,9 @@ def test_winapps_tool_on_a_non_windows_host_is_a_clean_error(monkeypatch):
 def test_server_name_depends_on_platform(monkeypatch, platform, name):
     monkeypatch.setattr(mcp_server.sys, "platform", platform)
     assert rpc("initialize")["serverInfo"]["name"] == name
+
+
+@pytest.mark.parametrize("args", ["x", 5, [1]])
+def test_non_object_arguments_are_a_clean_error_not_a_crash(on_windows, args):
+    result = rpc("tools/call", {"name": "winapps_screenshot", "args": args})
+    assert result["isError"] is True and payload(result)["code"] == "INVALID_ARGS"

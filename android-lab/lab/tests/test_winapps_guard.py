@@ -347,3 +347,24 @@ def test_web_ui_and_mcp_never_call_the_raw_screenshot_directly():
     for path in sources:
         with open(path, encoding="utf-8") as f:
             assert "winapps.winapps_window_screenshot" not in f.read(), path
+
+
+# ── Final review fixes ────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("call", [
+    lambda root: guard.list_windows(root, "admin"),
+    lambda root: guard.screenshot(root, 1, "Agent"),
+    lambda root: guard.doctor(root, ""),
+])
+def test_unknown_audience_is_refused_instead_of_treated_as_human(world, call):
+    with pytest.raises(guard.GuardError) as refused:
+        call(world["root"])
+    assert refused.value.code == "INVALID_AUDIENCE" and world["captures"] == []
+
+
+def test_example_policy_is_valid_and_grants_no_terminal(monkeypatch):
+    repo = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    monkeypatch.setenv("OSLAB_WINAPPS_POLICY", os.path.join(repo, "win-lab", "winapps-policy.example.json"))
+    policy = guard.load_policy(repo)
+    assert policy.error is None and policy.allowed
+    assert not policy.allowed & {"windowsterminal", "wt", "cmd", "powershell", "pwsh", "conhost"}

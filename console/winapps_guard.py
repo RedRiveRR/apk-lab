@@ -205,6 +205,13 @@ def audit_rows(limit: int = 200) -> dict:
 # ── Guarded facade: the only way web_ui and the MCP server reach the collector ─────────────────
 
 _MAX_HWND = 0xFFFFFFFF
+AUDIENCES = ("human", "agent")
+
+
+def _audience(value: object) -> None:
+    """Fail closed: an unknown audience must never fall through to the more permissive human view."""
+    if value not in AUDIENCES:
+        raise GuardError("Unknown audience", "INVALID_AUDIENCE")
 
 
 def _window_id(value: object) -> int:
@@ -245,6 +252,7 @@ def list_windows(root: str, audience: str, *, tool: str | None = None) -> dict:
     An agent gets only allowlisted, unrestricted windows and a count of how many were withheld. A
     person gets every window, with restricted ones flagged and their titles replaced.
     """
+    _audience(audience)
     result = winapps.winapps_windows()
     if audience == "agent":
         audit(root, "list", audience=audience, tool=tool)
@@ -272,6 +280,7 @@ def list_windows(root: str, audience: str, *, tool: str | None = None) -> dict:
 
 def screenshot(root: str, window_id: object, audience: str, *, tool: str | None = None) -> bytes:
     """A PNG of one window, only if it passes the policy before and after the capture."""
+    _audience(audience)
     if winapps.sys.platform != "win32":
         raise GuardError("The Windows app mirror needs a Windows host", "NOT_SUPPORTED")
     try:
@@ -302,6 +311,7 @@ def screenshot(root: str, window_id: object, audience: str, *, tool: str | None 
 
 def doctor(root: str, audience: str = "agent", *, tool: str | None = None) -> dict:
     """The collector's doctor probe, which never captures a window this audience may not see."""
+    _audience(audience)
     policy = load_policy(root)
 
     def can_probe(window: dict) -> bool:

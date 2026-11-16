@@ -1,5 +1,5 @@
 {
-  "allowedApps": ["Notepad", "WindowsTerminal"],
+  "allowedApps": ["Notepad"],
   "restrictedApps": [],
   "restrictedTitles": []
 }

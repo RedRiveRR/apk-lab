@@ -330,6 +330,8 @@ def win_tool_call(name: str, args: dict) -> dict:
     """The Windows Apps Lab tools: every one is read-only and goes through the guard as the agent."""
     if sys.platform != "win32":
         raise winapps_guard.GuardError("The Windows Apps Lab needs a Windows host", "NOT_SUPPORTED")
+    if not isinstance(args, dict):
+        raise winapps_guard.GuardError("Tool arguments must be a JSON object", "INVALID_ARGS")
     if name == "winapps_apps":
         return _text(winapps_guard.list_windows(REPO_ROOT, "agent", tool=name))
     if name == "winapps_screenshot":

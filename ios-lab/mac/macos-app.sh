@@ -251,7 +251,7 @@ PY
     ' "$X" "$Y" || die "the click could not be posted; grant Accessibility permission to the console"
     ;;
   input)
-    # The mirror's action family (MIR-01): double-click, right-click, type and press-key,
+    # The mirror's action family (MIR-01): double-click, right-click, type, key and scroll,
     # with the same preview → confirm (or armed) pipeline as the single click. Fixed argv:
     # pid, x, y, kind, payload. `type` never sends Return — newlines are refused here and
     # by the console; Enter is its own explicit `key enter` action. Needs Accessibility.
@@ -313,6 +313,21 @@ PY
           }
         ' "$PAYLOAD" || die "the key could not be posted; grant Accessibility permission to the console"
         ;;
+      scroll)
+        DIRECTION="${PAYLOAD%%:*}"; PAGES="${PAYLOAD#*:}"
+        case "$DIRECTION" in up|down) ;; *) die "scroll direction must be up or down" ;; esac
+        case "$PAGES" in 1|2|3|4|5|6|7|8|9|10) ;; *) die "scroll pages must be 1-10" ;; esac
+        osascript -l JavaScript -e '
+          ObjC.import("CoreGraphics");
+          function run(argv) {
+            const p = $.CGPointMake(parseFloat(argv[0]), parseFloat(argv[1]));
+            const lines = parseInt(argv[3], 10) * (argv[2] === "up" ? 10 : -10);
+            $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent($(), $.kCGEventMouseMoved, p, $.kCGMouseButtonLeft));
+            $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateScrollWheelEvent($(), $.kCGScrollEventUnitLine, 1, lines));
+            return "scrolled " + argv[2] + " " + argv[3];
+          }
+        ' "$X" "$Y" "$DIRECTION" "$PAGES" || die "the scroll could not be posted; grant Accessibility permission to the console"
+        ;;
       paste)
         # MIR-07: clipboard paste — the one input that may carry newlines, gated behind an
         # explicit confirm even while armed (MIR-11). The clipboard is replaced, honestly.
@@ -324,7 +339,7 @@ PY
         say "pasted ${#PAYLOAD} characters (the clipboard was replaced)"
         ;;
       *)
-        die "input kind must be one of: double, right, type, key, paste"
+        die "input kind must be one of: double, right, type, key, paste, scroll"
         ;;
     esac
     ;;

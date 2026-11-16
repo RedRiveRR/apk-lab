@@ -378,19 +378,19 @@
           "id": "lab-winapps",
           "lab": "winapps",
           "title": "Windows Apps Lab",
-          "summary": "A read-only mirror of this Windows desktop's application windows, behind an allowlist and an audit log.",
+          "summary": "Read-only mirror of visible desktop applications on this Windows host.",
           "support": {
             "windows": {
               "level": "full",
-              "note": "Reads this host's own desktop; agents see only allowlisted apps and restricted windows are never captured"
+              "note": "Uses the current Windows desktop; no input control. Agents see only allowlisted apps and restricted windows are never captured"
             },
             "macos": {
               "level": "none",
-              "note": "Needs a Windows host. Use the macOS Lab for a Mac."
+              "note": "Needs a Windows host"
             },
             "linux": {
               "level": "none",
-              "note": "Needs a Windows host."
+              "note": "Needs a Windows host"
             }
           }
         },

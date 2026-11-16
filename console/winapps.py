@@ -48,30 +48,36 @@ class WinAppError(Exception):
         self.code = code
 
 
+# Keep the Win32 data layout available to the offline tests on other hosts.
+class _RECT(ctypes.Structure):
+    _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+        ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD), ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", wintypes.LONG), ("biYPelsPerMeter", wintypes.LONG),
+        ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+class _BITMAPINFO(ctypes.Structure):
+    _fields_ = [("bmiHeader", _BITMAPINFOHEADER), ("bmiColors", ctypes.c_ubyte * 4)]
+
+
+_ENUM_WINDOWS_PROC = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)(
+    wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+
 if sys.platform == "win32":
     _user32 = ctypes.WinDLL("user32", use_last_error=True)
     _gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
     _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
     _advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-
-    class _RECT(ctypes.Structure):
-        _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
-                    ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
-
-    class _BITMAPINFOHEADER(ctypes.Structure):
-        _fields_ = [
-            ("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
-            ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD),
-            ("biCompression", wintypes.DWORD), ("biSizeImage", wintypes.DWORD),
-            ("biXPelsPerMeter", wintypes.LONG), ("biYPelsPerMeter", wintypes.LONG),
-            ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD),
-        ]
-
-    class _BITMAPINFO(ctypes.Structure):
-        _fields_ = [("bmiHeader", _BITMAPINFOHEADER), ("bmiColors", ctypes.c_ubyte * 4)]
-
-    _ENUM_WINDOWS_PROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     _user32.EnumWindows.argtypes = [_ENUM_WINDOWS_PROC, wintypes.LPARAM]
     _user32.EnumWindows.restype = wintypes.BOOL

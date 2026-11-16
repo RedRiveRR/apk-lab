@@ -1,7 +1,8 @@
 # Dashboard
 
-The browser console: the host overview, every lab, and the Android Lab
-workbench, built from the qLar app shell (qLar PR #174).
+The browser console for the host, labs, and Android workbench.
+
+It is built from the qLar app shell (qLar PR #174).
 
 ## Architecture
 
@@ -77,9 +78,10 @@ when switched off, hidden or unmounted.
 
 ## Windows Apps Lab panel
 
-On Windows hosts, the new `winapps` lab serves a read-only desktop mirror through
-`/api/labs/winapps/apps` and `/api/labs/winapps/apps/<hwnd>/screenshot`. The
-backend uses ctypes to enumerate visible, captioned top-level windows and
+On Windows hosts, `winapps` serves a read-only desktop mirror through
+`/api/labs/winapps/apps` and `/api/labs/winapps/apps/<hwnd>/screenshot`.
+
+The backend uses ctypes to enumerate visible, captioned top-level windows and
 captures one window with `PrintWindow(PW_RENDERFULLCONTENT)`. The panel shows
 the selected window at its own aspect ratio, its dimensions and an `Elevated`
 badge when the owning process is elevated; only the newest capture updates the

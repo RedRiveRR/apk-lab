@@ -1,8 +1,9 @@
 # win-lab
 
-A reproducible Windows VM on Ubuntu Server, built on `dockur/windows`: one
-compose service running QEMU+KVM with a noVNC web viewer and RDP, backed by a
-persistent disk in `storage/`.
+A reproducible Windows VM on Ubuntu Server, built on `dockur/windows`.
+
+One compose service runs QEMU+KVM with a noVNC web viewer and RDP.
+The persistent disk lives in `storage/`.
 
 See [[win-lab]], the service in [[win-lab/docker-compose.yml]] and the runbook
 [[win-lab/README.md]].
@@ -37,8 +38,9 @@ the disk and reinstalls on next boot.
 
 ## Windows Apps Lab
 
-On a real Windows host, the dashboard can open the separate `winapps` lab. It
-serves a read-only desktop mirror through [[console/winapps.py]] with ctypes
+On a real Windows host, the dashboard can open the separate `winapps` lab.
+
+It serves a read-only desktop mirror through [[console/winapps.py]] with ctypes
 window enumeration and a `PrintWindow` capture; no process control is offered.
 This is separate from the Windows VM lifecycle and public Pages never mounts it.
 

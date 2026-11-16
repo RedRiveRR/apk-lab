@@ -2553,7 +2553,8 @@ def plan(root: str, request: dict, host: dict | None = None) -> dict:
                 "setup": ("appium.sh", "install"), "appium-install": ("appium.sh", "install"),
                 "appium-start": ("appium.sh", "start"), "appium-stop": ("appium.sh", "stop"),
                 "macos-smoke": ("macos-app.sh", "smoke"), "macos-click": ("macos-app.sh", "click"),
-                "macos-input": ("macos-app.sh", "input"), "macos-element": ("macos-app.sh", "element"),
+                "macos-input": ("macos-app.sh", "input"), "macos-scroll": ("macos-app.sh", "input"),
+                "macos-element": ("macos-app.sh", "element"),
                 "macos-set-value": ("macos-app.sh", "axset"), "macos-perform": ("macos-app.sh", "axperform"),
             }[action]
         else:

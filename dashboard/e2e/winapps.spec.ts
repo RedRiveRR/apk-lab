@@ -117,3 +117,28 @@ test("non-Windows hosts never query the Windows app mirror", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "Window mirror" })).toHaveCount(0);
   expect(requests).toEqual([]);
 });
+
+test("a restricted window is listed but disabled and never captured", async ({ page }) => {
+  await mockApi(page);
+  const captured: string[] = [];
+  await page.route("**/api/labs/winapps/apps", (route) => route.fulfill({
+    json: {
+      ...winapps,
+      windows: [
+        { ...winapps.windows[0], windowId: 200, app: "1Password", title: "(restricted)", restricted: true, reason: "password-manager" },
+        { ...winapps.windows[0], restricted: false, reason: null }
+      ]
+    }
+  }));
+  await page.route("**/api/labs/winapps/apps/*/screenshot", (route) => {
+    captured.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
+  });
+
+  await page.goto("/labs/winapps/");
+  await expect(page.locator("select#winapps-window option", { hasText: "1Password" })).toBeDisabled();
+  await expect(page.getByText("Some windows are restricted and cannot be mirrored.")).toBeVisible();
+  await expect(page.locator("img[alt='Mirror of Notepad']")).toBeVisible();
+  expect(captured.length).toBeGreaterThan(0);
+  expect(captured.every((path) => path.includes("/100/"))).toBe(true);
+});

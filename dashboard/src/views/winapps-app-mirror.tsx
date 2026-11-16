@@ -11,6 +11,7 @@ import { api, message, usePoll, type WinApp, type WinAppsInfo } from "../lib/api
 const MIRROR_INTERVAL = 3000;
 
 function labelFor(app: WinApp): string {
+  if (app.restricted) return `${app.app} (restricted)`;
   const title = app.title ? ` — ${app.title.slice(0, 40)}` : "";
   return `${app.app}${title}`;
 }
@@ -25,7 +26,9 @@ export function WinAppsPanel() {
   const grabSeq = useRef(0);
 
   const windows = data?.windows ?? [];
-  const selected = windows.find((window) => window.windowId === windowId) ?? windows[0] ?? null;
+  // Restricted windows are listed so people know they exist, but are never selected or captured.
+  const usable = windows.filter((window) => !window.restricted);
+  const selected = usable.find((window) => window.windowId === windowId) ?? usable[0] ?? null;
 
   // Pick the first window when the selection disappears (window closed or minimized).
   useEffect(() => {
@@ -103,7 +106,7 @@ export function WinAppsPanel() {
               onChange={(e) => setWindowId(Number(e.target.value))}
             >
               {windows.map((window) => (
-                <option key={window.windowId} value={window.windowId}>
+                <option key={window.windowId} value={window.windowId} disabled={window.restricted}>
                   {labelFor(window)}
                 </option>
               ))}
@@ -115,6 +118,9 @@ export function WinAppsPanel() {
             ) : null}
             {selected?.elevated ? <Badge tone="warning">Elevated</Badge> : null}
           </div>
+          {usable.length < windows.length ? (
+            <p className="text-xs text-zinc-500">Some windows are restricted and cannot be mirrored.</p>
+          ) : null}
 
           <div
             className="relative w-full overflow-hidden rounded-xl border border-(--iux-border) bg-black"

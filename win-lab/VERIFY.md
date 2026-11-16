@@ -123,7 +123,7 @@ this revision (no Rust change since the previous run).
 
 What was added: `console/winapps_guard.py` (policy, restricted windows, audit and the only door
 the web endpoints and the MCP server use), read-only `winapps_*` MCP tools and a `lab-winapps`
-capabilities entry. Design: `docs/superpowers/specs/2026-11-16-winapps-agent-safety-design.md`.
+capabilities entry.
 
 ### Real-host check (Windows 11, standard user)
 

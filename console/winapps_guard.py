@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 import unicodedata
 from dataclasses import dataclass
 
@@ -139,3 +141,60 @@ def policy_summary(root: str) -> dict:
     return {"allowedApps": len(policy.allowed), "restrictedApps": len(policy.restricted_apps),
             "restrictedTitles": len(policy.restricted_titles), "policyError": policy.error,
             "path": policy.path, "exists": policy.exists}
+
+
+# ── Audit ────────────────────────────────────────────────────────────────────
+
+AUDIT_DIR_ENV = "OSLAB_WINAPPS_AUDIT_DIR"
+_AUDIT_MAX = 500
+_COALESCE_SECONDS = 60
+_AUDIT: list[dict] = []
+_AUDIT_SEQ = 0
+_AUDIT_LOCK = threading.Lock()
+
+
+def _reset_audit() -> None:
+    global _AUDIT_SEQ
+    with _AUDIT_LOCK:
+        _AUDIT.clear()
+        _AUDIT_SEQ = 0
+
+
+def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
+          window_id: int | None = None, code: str | None = None, tool: str | None = None) -> None:
+    """Record one row. Never raises: auditing must not break the action it describes.
+
+    Titles and pixels cannot be passed in. An identical row (same audience, kind, app, window and
+    code) within 60 seconds of the previous one only raises its count, so a panel retrying a
+    restricted window every few seconds writes one row a minute.
+    """
+    global _AUDIT_SEQ
+    try:
+        now = time.time()
+        with _AUDIT_LOCK:
+            last = _AUDIT[-1] if _AUDIT else None
+            if (last and now - last["time"] <= _COALESCE_SECONDS and last["audience"] == audience
+                    and last["kind"] == kind and last["app"] == app and last["windowId"] == window_id
+                    and last["code"] == code):
+                last["count"] += 1
+                return
+            _AUDIT_SEQ += 1
+            row = {"seq": _AUDIT_SEQ, "time": now, "audience": audience, "kind": kind, "app": app,
+                   "windowId": window_id, "code": code, "tool": tool, "count": 1}
+            _AUDIT.append(row)
+            del _AUDIT[:-_AUDIT_MAX]
+            line = json.dumps(row)
+        folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
+                      "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+    except Exception:  # noqa: BLE001 - the audit trail is best effort by design
+        pass
+
+
+def audit_rows(limit: int = 200) -> dict:
+    """The newest rows for the panel and the MCP audit tool."""
+    with _AUDIT_LOCK:
+        return {"recording": True, "rows": [dict(row) for row in _AUDIT[-max(0, limit):]]}

@@ -128,3 +128,77 @@ def test_policy_summary_reports_counts_without_names(tmp_path, monkeypatch):
     assert summary == {"allowedApps": 2, "restrictedApps": 1, "restrictedTitles": 3,
                        "policyError": None, "path": str(path), "exists": True}
     assert "Notepad" not in json.dumps(summary)
+
+
+# ── Task 2: audit ─────────────────────────────────────────────────────────────
+
+import threading
+
+
+@pytest.fixture
+def audit_dir(tmp_path, monkeypatch):
+    folder = tmp_path / "audit"
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(folder))
+    guard._reset_audit()
+    yield folder
+    guard._reset_audit()
+
+
+def rows(limit=500):
+    return guard.audit_rows(limit)["rows"]
+
+
+def test_audit_row_has_seq_time_and_no_title_or_pixels(audit_dir):
+    guard.audit(None, "list", audience="agent", app="Notepad", window_id=1, tool="winapps_apps")
+    row = rows()[-1]
+    assert set(row) == {"seq", "time", "audience", "kind", "app", "windowId", "code", "tool", "count"}
+    assert row["seq"] == 1 and row["count"] == 1 and row["windowId"] == 1
+    with pytest.raises(TypeError):
+        guard.audit(None, "list", audience="agent", title="secret")  # titles cannot be passed at all
+
+
+def test_identical_rows_within_60_seconds_coalesce_with_count(audit_dir, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(guard.time, "time", lambda: now[0])
+    for _ in range(20):
+        guard.audit(None, "refused", audience="human", app="1Password", window_id=5, code="RESTRICTED_WINDOW")
+        now[0] += 1
+    assert len(rows()) == 1 and rows()[0]["count"] == 20
+    now[0] = 1061.5
+    guard.audit(None, "refused", audience="human", app="1Password", window_id=5, code="RESTRICTED_WINDOW")
+    assert len(rows()) == 2
+
+
+def test_ring_never_exceeds_500_rows(audit_dir):
+    for i in range(650):
+        guard.audit(None, "list", audience="agent", window_id=i)
+    assert len(rows(10_000)) == 500 and rows(10_000)[-1]["windowId"] == 649
+
+
+def test_audit_writes_one_jsonl_line_per_new_row_under_the_audit_dir(audit_dir, tmp_path):
+    guard.audit(str(tmp_path), "list", audience="agent", window_id=1)
+    guard.audit(str(tmp_path), "screenshot", audience="agent", window_id=1)
+    files = list(audit_dir.glob("winapps-audit-*.jsonl"))
+    assert len(files) == 1
+    lines = [json.loads(line) for line in files[0].read_text(encoding="utf-8").splitlines()]
+    assert [line["kind"] for line in lines] == ["list", "screenshot"]
+
+
+def test_audit_never_raises_when_the_directory_is_unwritable(tmp_path, monkeypatch):
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a folder")
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(blocker))
+    guard._reset_audit()
+    guard.audit(str(tmp_path), "list", audience="agent", window_id=1)
+    assert len(rows()) == 1
+
+
+def test_concurrent_audit_keeps_unique_consecutive_seq(audit_dir):
+    def work(base):
+        for i in range(50):
+            guard.audit(None, "list", audience="agent", window_id=base * 1000 + i)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sorted(row["seq"] for row in rows()) == list(range(1, 401))

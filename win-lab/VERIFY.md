@@ -132,7 +132,7 @@ owned two windows of its own (`python`, titles `winapps-demo allowed` and
 `winapps-demo [InPrivate]`) and used a temporary policy file allowing only `python`. No other
 application was touched, and other windows' titles were not printed.
 
-Observed:
+Observed (before the final merge of `master`, which did not touch this code):
 
 - `serverInfo.name` was `os-lab-windows`; the winapps tools were `winapps_apps`,
   `winapps_screenshot`, `winapps_capabilities`, `winapps_doctor`, `winapps_audit`. No arm or input tool.
@@ -154,17 +154,18 @@ title hint on a window this script owned), and an elevated window.
 
 ```text
 pytest test_winapps.py test_winapps_guard.py test_mcp_winapps.py : 98 passed
-pytest android-lab/lab/tests (whole backend)                     : 561 passed, 9 failed, 17 skipped
+pytest android-lab/lab/tests (whole backend)                     : 565 passed, 5 failed, 17 skipped
 app: npm run test:stage                                          : 9 passed
 dashboard: tsc, test:i18n (2767 keys, 7 locales), build (532 pages)
 playwright winapps.spec.ts                                       : 5 passed
 playwright (full suite)                                          : 70 passed, 23 failed, 1 skipped
 ```
 
-The 9 backend failures are macOS tool-chain, APK patcher, cleanup and `lab_start` tests that do not
-involve this lab. Before this change the same host showed 12; three of those were caused by the
-Windows Apps Lab itself (the capability catalog had no `lab-winapps` item, and two lab-state tests
-did not expect `winapps` to be unavailable on Linux and macOS hosts) and are fixed here.
+The 5 backend failures (`test_apk_patcher`, `test_cleanup_console`, two in `test_macos_parity`,
+and `test_lab_start_requires_a_previewed_plan`) do not involve this lab and fail on this host
+without this change. Re-run after merging current `origin/master` into this branch: the earlier
+failures caused by the Windows Apps Lab itself (a missing `lab-winapps` capability item and two stale
+lab-state expectations) were fixed on `master` in the meantime, and the merge kept that version.
 
 The 23 Playwright failures are all in `health-and-content.spec.ts` and `how-to-use.spec.ts`. The same
 suite run on an unmodified copy of this branch's base commit fails 23 as well (21 identical tests; two

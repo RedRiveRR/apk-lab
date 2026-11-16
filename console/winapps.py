@@ -398,7 +398,8 @@ def winapps_window_screenshot(window_id: int) -> bytes:
     return _png(width, height, bytes(pixels))
 
 
-def doctor(can_probe: Callable[[dict[str, Any]], bool] | None = None) -> dict[str, Any]:
+def doctor(can_probe: Callable[[dict[str, Any]], bool] | None = None,
+           capture: Callable[[int], bytes] | None = None) -> dict[str, Any]:
     """Desktop session, this console's elevation and one live capture probe.
 
     `elevated` is None when Windows would not report this process's own token. A standard-user
@@ -433,7 +434,8 @@ def doctor(can_probe: Callable[[dict[str, Any]], bool] | None = None) -> dict[st
     candidates = [window for window in windows if can_probe is None or can_probe(window)]
     for window in candidates[:8]:
         try:
-            result["capture"] = winapps_window_screenshot(window["windowId"]).startswith(b"\x89PNG")
+            grab = capture or winapps_window_screenshot  # the caller may supply a policy-checked capture
+            result["capture"] = grab(window["windowId"]).startswith(b"\x89PNG")
             break
         except WinAppError as exc:
             reason = str(exc)

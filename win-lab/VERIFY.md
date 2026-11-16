@@ -154,11 +154,11 @@ title hint on a window this script owned), and an elevated window.
 ### Tests
 
 ```text
-pytest test_winapps.py test_winapps_guard.py test_mcp_winapps.py : 98 passed
-pytest android-lab/lab/tests (whole backend)                     : 565 passed, 5 failed, 17 skipped
+pytest test_winapps.py test_winapps_guard.py test_mcp_winapps.py : 116 passed
+pytest android-lab/lab/tests (whole backend)                     : 583 passed, 5 failed, 17 skipped
 app: npm run test:stage                                          : 9 passed
 dashboard: tsc, test:i18n (2767 keys, 7 locales), build (532 pages)
-playwright winapps.spec.ts                                       : 5 passed
+playwright winapps.spec.ts                                       : 8 passed
 playwright (full suite)                                          : 70 passed, 23 failed, 1 skipped
 ```
 
@@ -189,6 +189,13 @@ CLI is not installed on this host).
 - In a packaged install the lab folder may be read-only: point `OSLAB_WINAPPS_POLICY` and
   `OSLAB_WINAPPS_AUDIT_DIR` at writable paths, or the audit stays in memory.
 - The capabilities entry's new English text is not yet translated into the 7 locales.
+- The audit trail is per process (the HTTP console and each MCP server keep their own rows and
+  `seq` numbers, appending to one daily file) and the file keeps only a coalesced row's first count.
+- Added after an automated review of this PR: the post-capture check and the doctor probe use the
+  current policy and window; unknown policy keys are an error and valid restrictions survive an
+  invalid allowlist; the agent's audit view hides other audiences and refusal app names; agent
+  captures are capped at 4K and every capture has a 15 s deadline; the panel clears the previous
+  window's image when the selection changes and no longer starves a slow capture.
 
 ## 8. Scope and limits
 

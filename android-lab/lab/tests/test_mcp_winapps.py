@@ -113,7 +113,8 @@ def test_winapps_doctor_and_audit_use_the_agent_audience(on_windows, monkeypatch
     monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
     winapps_guard._reset_audit()
     winapps_guard.audit(None, "list", audience="agent", tool="winapps_apps")
-    assert [row["kind"] for row in payload(call("winapps_audit"))["rows"]] == ["list"]
+    # The audit tool is itself an agent call, so it appears in what it returns.
+    assert [row["kind"] for row in payload(call("winapps_audit"))["rows"]] == ["list", "audit"]
     winapps_guard._reset_audit()
 
 
@@ -134,3 +135,35 @@ def test_server_name_depends_on_platform(monkeypatch, platform, name):
 def test_non_object_arguments_are_a_clean_error_not_a_crash(on_windows, args):
     result = rpc("tools/call", {"name": "winapps_screenshot", "args": args})
     assert result["isError"] is True and payload(result)["code"] == "INVALID_ARGS"
+
+
+# ── Sourcery review findings ──────────────────────────────────────────────────
+
+@pytest.mark.parametrize("args", [[], 0, "", False])
+def test_falsey_non_object_arguments_are_refused_too(on_windows, args):
+    result = rpc("tools/call", {"name": "winapps_screenshot", "args": args})
+    assert result["isError"] is True and payload(result)["code"] == "INVALID_ARGS"
+
+
+def test_every_agent_tool_call_is_audited_including_argument_refusals(on_windows, monkeypatch, tmp_path):
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
+    monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(tmp_path / "absent.json"))
+    winapps_guard._reset_audit()
+    call("winapps_capabilities")
+    call("winapps_audit")
+    rpc("tools/call", {"name": "winapps_screenshot", "args": "x"})
+    seen = [(row["kind"], row["code"], row["tool"]) for row in winapps_guard.audit_rows(200)["rows"]]
+    assert seen == [("capabilities", None, "winapps_capabilities"), ("audit", None, "winapps_audit"),
+                    ("refused", "INVALID_ARGS", "winapps_screenshot")]
+    winapps_guard._reset_audit()
+
+
+def test_winapps_audit_tool_shows_agent_rows_without_restricted_identities(on_windows, monkeypatch, tmp_path):
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
+    winapps_guard._reset_audit()
+    winapps_guard.audit(None, "refused", audience="agent", app="1Password", window_id=3, code="RESTRICTED_WINDOW")
+    winapps_guard.audit(None, "refused", audience="human", app="msedge", window_id=4, code="RESTRICTED_WINDOW")
+    rows = payload(call("winapps_audit"))["rows"]
+    assert [(row["audience"], row["app"]) for row in rows][:1] == [("agent", None)]
+    assert "msedge" not in json.dumps(rows) and "1Password" not in json.dumps(rows)
+    winapps_guard._reset_audit()

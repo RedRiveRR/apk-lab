@@ -72,7 +72,7 @@ def _policy_path(root: str) -> str:
     return os.environ.get(POLICY_ENV) or os.path.join(root, "win-lab", "winapps-policy.json")
 
 
-_POLICY_CACHE: dict[str, tuple[int, int, Policy]] = {}
+_POLICY_CACHE: dict[str, tuple[bytes, Policy]] = {}  # keyed by the file contents, not size or mtime
 
 
 def _broken(path: str, message: str) -> Policy:
@@ -86,15 +86,24 @@ def _parse(path: str, raw: bytes) -> Policy:
         return _broken(path, "The policy file is not valid JSON")
     if not isinstance(data, dict):
         return _broken(path, "The policy file must be a JSON object")
+    errors: list[str] = []
+    unknown = sorted(str(key) for key in data if key not in POLICY_KEYS)
+    if unknown:
+        errors.append("Unknown policy key(s): " + ", ".join(unknown))  # a typo must not drop a restriction
     lists: dict[str, list[str]] = {}
     for key in POLICY_KEYS:
         value = data.get(key, [])
-        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-            return _broken(path, f"{key} must be a list of strings")
-        lists[key] = value
-    allowed = frozenset(name for name in map(_norm_app, lists["allowedApps"]) if name)
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            lists[key] = value
+        else:
+            lists[key] = []
+            errors.append(f"{key} must be a list of strings")
     restricted_apps = frozenset(name for name in map(_norm_app, lists["restrictedApps"]) if name)
     restricted_titles = tuple(hint for hint in map(_norm, lists["restrictedTitles"]) if hint)
+    if errors:
+        # Fail closed for the allowlist, but keep every restriction that did parse.
+        return Policy(frozenset(), restricted_apps, restricted_titles, "; ".join(errors), path, True)
+    allowed = frozenset(name for name in map(_norm_app, lists["allowedApps"]) if name)
     return Policy(allowed, restricted_apps, restricted_titles, None, path, True)
 
 
@@ -102,19 +111,17 @@ def load_policy(root: str) -> Policy:
     """The current policy; a missing file allows nothing and a broken one fails closed."""
     path = _policy_path(root)
     try:
-        stat = os.stat(path)
-    except OSError:
-        return Policy(frozenset(), frozenset(), (), None, path, False)
-    key = (stat.st_mtime_ns, stat.st_size)
-    cached = _POLICY_CACHE.get(path)
-    if cached and cached[:2] == key:
-        return cached[2]
-    try:
         with open(path, "rb") as f:
-            policy = _parse(path, f.read())
+            raw = f.read()
+    except FileNotFoundError:
+        return Policy(frozenset(), frozenset(), (), None, path, False)
     except OSError:
-        policy = _broken(path, "The policy file could not be read")
-    _POLICY_CACHE[path] = (key[0], key[1], policy)
+        return _broken(path, "The policy file could not be read")
+    cached = _POLICY_CACHE.get(path)
+    if cached and cached[0] == raw:
+        return cached[1]
+    policy = _parse(path, raw)
+    _POLICY_CACHE[path] = (raw, policy)
     return policy
 
 
@@ -153,13 +160,18 @@ _COALESCE_SECONDS = 60
 _AUDIT: list[dict] = []
 _AUDIT_SEQ = 0
 _AUDIT_LOCK = threading.Lock()
+_AUDIT_FILE_MAX_ROWS = 10_000  # per process and day: a flood of distinct rows must not fill the disk
+_AUDIT_FILE_ROWS = 0
+_AUDIT_PERSISTENT = True
 
 
 def _reset_audit() -> None:
-    global _AUDIT_SEQ
+    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
     with _AUDIT_LOCK:
         _AUDIT.clear()
         _AUDIT_SEQ = 0
+        _AUDIT_FILE_ROWS = 0
+        _AUDIT_PERSISTENT = True
 
 
 def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
@@ -170,7 +182,7 @@ def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
     code) within 60 seconds of the previous one only raises its count, so a panel retrying a
     restricted window every few seconds writes one row a minute.
     """
-    global _AUDIT_SEQ
+    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
     try:
         now = time.time()
         with _AUDIT_LOCK:
@@ -185,27 +197,71 @@ def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
                    "windowId": window_id, "code": code, "tool": tool, "count": 1}
             _AUDIT.append(row)
             del _AUDIT[:-_AUDIT_MAX]
-            line = json.dumps(row)
-        folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
-        if folder:
-            os.makedirs(folder, exist_ok=True)
-            with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
-                      "a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
+            if folder:
+                # Under the lock so rows reach the file in seq order; a failure or the cap only
+                # flips `persistent`, the in-memory trail keeps working.
+                if _AUDIT_FILE_ROWS >= _AUDIT_FILE_MAX_ROWS:
+                    _AUDIT_PERSISTENT = False
+                else:
+                    try:
+                        os.makedirs(folder, exist_ok=True)
+                        with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
+                                  "a", encoding="utf-8") as f:
+                            f.write(json.dumps(row) + "\n")
+                        _AUDIT_FILE_ROWS += 1
+                    except OSError:
+                        _AUDIT_PERSISTENT = False
     except Exception:  # noqa: BLE001 - the audit trail is best effort by design
         pass
 
 
-def audit_rows(limit: int = 200) -> dict:
-    """The newest rows for the panel and the MCP audit tool."""
+_AGENT_HIDDEN_CODES = ("RESTRICTED_WINDOW", "APP_NOT_ALLOWED")
+
+
+def audit_rows(limit: int = 200, *, audience: str | None = None) -> dict:
+    """The newest rows for the panel and the MCP audit tool.
+
+    For the agent view only the agent's own rows are returned, and the app name of a refusal for a
+    restricted or non-allowlisted window is dropped, so the audit cannot reveal what the agent was
+    never allowed to see. `persistent` is False when rows are no longer reaching the daily file.
+    """
     with _AUDIT_LOCK:
-        return {"recording": True, "rows": [dict(row) for row in _AUDIT[-max(0, limit):]]}
+        selected = [dict(row) for row in _AUDIT if audience != "agent" or row["audience"] == "agent"]
+        persistent = _AUDIT_PERSISTENT
+    if audience == "agent":
+        for row in selected:
+            if row["code"] in _AGENT_HIDDEN_CODES:
+                row["app"] = None
+    return {"recording": True, "persistent": persistent, "rows": selected[-max(0, limit):]}
 
 
 # ── Guarded facade: the only way web_ui and the MCP server reach the collector ─────────────────
 
 _MAX_HWND = 0xFFFFFFFF
 AUDIENCES = ("human", "agent")
+AGENT_MAX_PIXELS = 3840 * 2160  # an agent capture is base64'd into one JSON line; people keep the 8K ceiling
+_CAPTURE_TIMEOUT = 15.0
+
+
+def _capture(hwnd: int) -> bytes:
+    """The raw capture with a deadline: a window that stops responding must not block the caller."""
+    box: dict = {}
+
+    def run() -> None:
+        try:
+            box["png"] = winapps.winapps_window_screenshot(hwnd)
+        except BaseException as error:  # noqa: BLE001 - re-raised on the caller's thread
+            box["error"] = error
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(_CAPTURE_TIMEOUT)
+    if worker.is_alive():
+        raise winapps.WinAppError("That window did not respond in time; try again later", "CAPTURE_TIMEOUT")
+    if "error" in box:
+        raise box["error"]
+    return box["png"]
 
 
 def _audience(value: object) -> None:
@@ -278,7 +334,8 @@ def list_windows(root: str, audience: str, *, tool: str | None = None) -> dict:
     return reply
 
 
-def screenshot(root: str, window_id: object, audience: str, *, tool: str | None = None) -> bytes:
+def screenshot(root: str, window_id: object, audience: str, *, tool: str | None = None,
+               _audit_success: bool = True) -> bytes:
     """A PNG of one window, only if it passes the policy before and after the capture."""
     _audience(audience)
     if winapps.sys.platform != "win32":
@@ -293,8 +350,11 @@ def screenshot(root: str, window_id: object, audience: str, *, tool: str | None 
         raise _refuse(root, audience, tool, None, hwnd, "WINDOW_GONE",
                       "That window is not on screen anymore; refresh the mirror", "retry")
     _check(root, audience, tool, window, hwnd, policy)
+    if audience == "agent" and window.get("width", 0) * window.get("height", 0) > AGENT_MAX_PIXELS:
+        raise _refuse(root, audience, tool, window, hwnd, "CAPTURE_TOO_LARGE",
+                      "That window is too large for an agent capture")
     try:
-        png = winapps.winapps_window_screenshot(hwnd)
+        png = _capture(hwnd)
     except winapps.WinAppError as error:
         retry = "never" if error.code == "INVALID_WINDOW" else "retry"
         raise _refuse(root, audience, tool, window, hwnd, error.code, str(error), retry) from None
@@ -303,8 +363,9 @@ def screenshot(root: str, window_id: object, audience: str, *, tool: str | None 
     if after is None:
         raise _refuse(root, audience, tool, window, hwnd, "WINDOW_GONE",
                       "That window is not on screen anymore; refresh the mirror", "retry")
-    _check(root, audience, tool, after, hwnd, policy)
-    if audience == "agent":
+    # Reload: the policy file may have changed while the capture ran.
+    _check(root, audience, tool, after, hwnd, load_policy(root))
+    if audience == "agent" and _audit_success:
         audit(root, "screenshot", audience=audience, app=window.get("app"), window_id=hwnd, tool=tool)
     return png
 
@@ -318,7 +379,14 @@ def doctor(root: str, audience: str = "agent", *, tool: str | None = None) -> di
         verdict = classify(window, policy)
         return not verdict.restricted and (audience != "agent" or verdict.allowed)
 
-    result = winapps.doctor(can_probe=can_probe)
+    def capture(hwnd: int) -> bytes:
+        # Every probe capture re-checks the current window and policy, like any other capture.
+        try:
+            return screenshot(root, hwnd, audience, tool=tool, _audit_success=False)
+        except GuardError as error:
+            raise winapps.WinAppError(str(error), error.code) from None
+
+    result = winapps.doctor(can_probe=can_probe, capture=capture)
     if audience == "agent":
         audit(root, "doctor", audience=audience, tool=tool)
     return result

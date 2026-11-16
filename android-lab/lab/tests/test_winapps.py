@@ -278,3 +278,10 @@ def test_doctor_honours_can_probe(host):
     assert probed == [] and result["capture"] is False and result["windows"] == 1
     assert result["reason"] == "No on-screen window to probe"
     assert winapps.doctor(can_probe=lambda window: True)["capture"] is True and probed == [1234]
+
+
+def test_doctor_uses_the_given_capture_function(host):
+    host.setattr(winapps, "_user32", type("U", (FakeUser32,), {"GetShellWindow": lambda self: 1})())
+    host.setattr(winapps, "winapps_window_screenshot", lambda hwnd: (_ for _ in ()).throw(AssertionError("raw")))
+    result = winapps.doctor(capture=lambda hwnd: b"\x89PNG\r\n\x1a\n")
+    assert result["capture"] is True

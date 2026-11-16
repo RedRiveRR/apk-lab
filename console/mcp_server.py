@@ -331,6 +331,7 @@ def win_tool_call(name: str, args: dict) -> dict:
     if sys.platform != "win32":
         raise winapps_guard.GuardError("The Windows Apps Lab needs a Windows host", "NOT_SUPPORTED")
     if not isinstance(args, dict):
+        winapps_guard.audit(REPO_ROOT, "refused", audience="agent", code="INVALID_ARGS", tool=name)
         raise winapps_guard.GuardError("Tool arguments must be a JSON object", "INVALID_ARGS")
     if name == "winapps_apps":
         return _text(winapps_guard.list_windows(REPO_ROOT, "agent", tool=name))
@@ -339,13 +340,15 @@ def win_tool_call(name: str, args: dict) -> dict:
         return {"content": [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"}]}
     if name == "winapps_capabilities":
         summary = winapps_guard.policy_summary(REPO_ROOT)
+        winapps_guard.audit(REPO_ROOT, "capabilities", audience="agent", tool=name)
         return _text({"allowedApps": summary["allowedApps"], "restrictedApps": summary["restrictedApps"],
                       "restrictedTitles": summary["restrictedTitles"], "policyError": summary["policyError"],
                       "exists": summary["exists"], "audience": "agent", "inputSupported": False})
     if name == "winapps_doctor":
         return _text(winapps_guard.doctor(REPO_ROOT, "agent", tool=name))
     if name == "winapps_audit":
-        return _text(winapps_guard.audit_rows(200))
+        winapps_guard.audit(REPO_ROOT, "audit", audience="agent", tool=name)
+        return _text(winapps_guard.audit_rows(200, audience="agent"))
     raise winapps_guard.GuardError(f"Unknown tool {name}", "UNKNOWN_TOOL")
 
 
@@ -454,7 +457,13 @@ def handle(message: dict) -> dict | None:
     if method == "tools/call":
         params = message.get("params") or {}
         try:
-            result = tool_call(str(params.get("name")), params.get("args") or {})
+            raw_args = params.get("args")
+            # The Windows tools validate their arguments themselves, so a falsey non-object such as
+            # [] or 0 is refused instead of silently becoming {}; only a missing value means none.
+            args = {} if raw_args is None else raw_args
+            if not str(params.get("name")).startswith("winapps_"):
+                args = raw_args or {}
+            result = tool_call(str(params.get("name")), args)
             return {"jsonrpc": "2.0", "id": message_id, "result": {**result, "isError": False}}
         except (oslab.PlanError, winapps_guard.GuardError, winapps.WinAppError) as e:
             payload: dict = {"error": str(e)}

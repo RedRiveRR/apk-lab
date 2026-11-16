@@ -317,7 +317,7 @@ def test_screenshot_on_a_non_windows_host_is_not_supported(world, monkeypatch):
 
 def test_doctor_probe_skips_restricted_windows(world, monkeypatch):
     seen = {}
-    monkeypatch.setattr(winapps, "doctor", lambda can_probe=None: seen.update(probe=can_probe) or {"capture": True},
+    monkeypatch.setattr(winapps, "doctor", lambda can_probe=None, capture=None: seen.update(probe=can_probe) or {"capture": True},
                         raising=False)
     guard.doctor(world["root"], "agent", tool="winapps_doctor")
     assert [seen["probe"](w) for w in WINDOWS] == [True, False, False, False]
@@ -368,3 +368,123 @@ def test_example_policy_is_valid_and_grants_no_terminal(monkeypatch):
     policy = guard.load_policy(repo)
     assert policy.error is None and policy.allowed
     assert not policy.allowed & {"windowsterminal", "wt", "cmd", "powershell", "pwsh", "conhost"}
+
+
+# ── Sourcery review findings ──────────────────────────────────────────────────
+
+def test_post_capture_check_uses_the_policy_as_it_is_after_the_capture(world, monkeypatch, tmp_path):
+    policy_path = tmp_path / "policy.json"
+
+    def capture(hwnd):
+        policy_path.write_text(json.dumps({"allowedApps": ["Notepad"], "restrictedApps": ["Notepad"]}))
+        return PNG
+
+    monkeypatch.setattr(winapps, "winapps_window_screenshot", capture)
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], 1, "agent")
+    assert refused.value.code == "RESTRICTED_WINDOW"
+
+
+def test_doctor_captures_only_after_rechecking_the_current_window(world, monkeypatch):
+    seen = {}
+
+    def fake_doctor(can_probe=None, capture=None):
+        seen["ok"] = capture(1)
+        with pytest.raises(winapps.WinAppError) as refused:
+            capture(3)
+        seen["code"] = refused.value.code
+        return {"capture": True}
+
+    monkeypatch.setattr(winapps, "doctor", fake_doctor, raising=False)
+    guard.doctor(world["root"], "agent")
+    assert seen == {"ok": PNG, "code": "RESTRICTED_WINDOW"} and world["captures"] == [1]
+    assert not any(row["kind"] == "screenshot" for row in rows())
+
+
+def test_agent_audit_view_hides_human_rows_and_restricted_identities(audit_dir):
+    guard.audit(None, "refused", audience="agent", app="1Password", window_id=3, code="RESTRICTED_WINDOW")
+    guard.audit(None, "refused", audience="agent", app="Calc", window_id=2, code="APP_NOT_ALLOWED")
+    guard.audit(None, "refused", audience="human", app="msedge", window_id=4, code="RESTRICTED_WINDOW")
+    guard.audit(None, "list", audience="agent", tool="winapps_apps")
+    agent_rows = guard.audit_rows(200, audience="agent")["rows"]
+    assert [row["audience"] for row in agent_rows] == ["agent", "agent", "agent"]
+    assert [row["app"] for row in agent_rows] == [None, None, None]
+    assert [row["windowId"] for row in agent_rows][:2] == [3, 2]
+    assert [row["app"] for row in guard.audit_rows(200)["rows"]][:3] == ["1Password", "Calc", "msedge"]
+
+
+def test_unknown_policy_keys_are_a_policy_error(tmp_path, monkeypatch):
+    write_policy(tmp_path, monkeypatch, {"allowedApps": ["a"], "restrictedApp": ["b"]})
+    policy = guard.load_policy(str(tmp_path))
+    assert policy.allowed == frozenset() and "restrictedApp" in policy.error
+
+
+def test_valid_restrictions_survive_an_invalid_allowlist(tmp_path, monkeypatch):
+    write_policy(tmp_path, monkeypatch, {"allowedApps": "nope", "restrictedTitles": ["secret"]})
+    policy = guard.load_policy(str(tmp_path))
+    assert policy.error and policy.allowed == frozenset()
+    assert guard.classify(win("msedge", "my SECRET plan"), policy).reason == "policy-title"
+
+
+def test_policy_change_with_the_same_size_and_mtime_is_seen(tmp_path, monkeypatch):
+    path = write_policy(tmp_path, monkeypatch, {"allowedApps": ["a"]})
+    stamp = path.stat().st_mtime_ns
+    assert guard.load_policy(str(tmp_path)).allowed == frozenset({"a"})
+    path.write_text(json.dumps({"allowedApps": ["b"]}))
+    os.utime(path, ns=(stamp, stamp))
+    assert guard.load_policy(str(tmp_path)).allowed == frozenset({"b"})
+
+
+def test_concurrent_audit_rows_reach_the_file_in_seq_order(audit_dir, tmp_path):
+    def work(base):
+        for i in range(40):
+            guard.audit(str(tmp_path), "list", audience="agent", window_id=base * 1000 + i + 1)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    file = next(audit_dir.glob("winapps-audit-*.jsonl"))
+    seqs = [json.loads(line)["seq"] for line in file.read_text(encoding="utf-8").splitlines()]
+    assert seqs == sorted(seqs) and len(seqs) == 240
+
+
+def test_audit_rows_report_when_persistence_is_failing(tmp_path, monkeypatch):
+    guard._reset_audit()
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "ok"))
+    guard.audit(str(tmp_path), "list", audience="agent", window_id=1)
+    assert guard.audit_rows()["persistent"] is True
+    blocker = tmp_path / "a-file"
+    blocker.write_text("x")
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(blocker))
+    guard.audit(str(tmp_path), "list", audience="agent", window_id=2)
+    assert guard.audit_rows()["persistent"] is False
+    guard._reset_audit()
+
+
+def test_the_audit_file_stops_growing_at_its_row_cap(audit_dir, tmp_path, monkeypatch):
+    monkeypatch.setattr(guard, "_AUDIT_FILE_MAX_ROWS", 5)
+    for i in range(8):
+        guard.audit(str(tmp_path), "list", audience="agent", window_id=i + 1)
+    file = next(audit_dir.glob("winapps-audit-*.jsonl"))
+    assert len(file.read_text(encoding="utf-8").splitlines()) == 5
+    assert len(rows()) == 8 and guard.audit_rows()["persistent"] is False
+
+
+def test_a_hung_capture_times_out_instead_of_blocking(world, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(guard, "_CAPTURE_TIMEOUT", 0.2)
+    monkeypatch.setattr(winapps, "winapps_window_screenshot", lambda hwnd: release.wait(5) and PNG)
+    try:
+        with pytest.raises(guard.GuardError) as refused:
+            guard.screenshot(world["root"], 1, "human")
+    finally:
+        release.set()
+    assert refused.value.code == "CAPTURE_TIMEOUT" and refused.value.retry == "retry"
+
+
+def test_agents_get_a_smaller_capture_ceiling_than_people(world):
+    world["info"] = lambda hwnd: {**WINDOWS[0], "width": 5000, "height": 3000}
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], 1, "agent")
+    assert refused.value.code == "CAPTURE_TOO_LARGE"
+    assert guard.screenshot(world["root"], 1, "human") == PNG

@@ -132,13 +132,14 @@ owned two windows of its own (`python`, titles `winapps-demo allowed` and
 `winapps-demo [InPrivate]`) and used a temporary policy file allowing only `python`. No other
 application was touched, and other windows' titles were not printed.
 
-Observed (before the final merge of `master`, which did not touch this code):
+Observed, re-run on the tree after merging current `origin/master` (that merge only moved the Win32
+structure definitions in `console/winapps.py` out of the Windows-only block, with no behaviour change):
 
 - `serverInfo.name` was `os-lab-windows`; the winapps tools were `winapps_apps`,
   `winapps_screenshot`, `winapps_capabilities`, `winapps_doctor`, `winapps_audit`. No arm or input tool.
-- The person's view listed 8 windows. The `[InPrivate]` demo window was flagged
+- The person's view listed 6 windows. The `[InPrivate]` demo window was flagged
   `private-window` and its title replaced by `(restricted)`.
-- The agent's `winapps_apps` returned exactly 1 window (`python`) and `withheld: 7`. The restricted
+- The agent's `winapps_apps` returned exactly 1 window (`python`) and `withheld: 5`. The restricted
   window was not in it.
 - `winapps_screenshot` of the allowlisted window returned a PNG (valid signature, 4,694 bytes).
 - The restricted window gave `RESTRICTED_WINDOW`; a window of an app that is not on the allowlist

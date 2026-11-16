@@ -12,9 +12,9 @@
 #
 # Stages:
 #   1. unit suites                          [required; all that --quick runs]
-#      android (pytest), source-lab engine (pytest), cleanup-lab reference
-#      and engine (unittest), cleanup-lab qrust-scan (cargo test; skipped
-#      without cargo), OS-30 linux-lab hardening mocks (unittest)
+#      android (pytest) + PENT-07 golden suite, source-lab engine (pytest),
+#      cleanup-lab reference and engine (unittest), cleanup-lab qrust-scan
+#      (cargo test; skipped without cargo), OS-30 linux-lab hardening mocks (unittest)
 #   2. android sample analysis pipeline     [smoke, non-fatal]
 #   3. shell script syntax check (bash -n)  [required]
 #   4. lat.md knowledge-graph check         [if `lat` is installed]
@@ -57,26 +57,30 @@ pick_python() {
 }
 ensure_pytest() {
   pick_python || { bad "no python3 found; install Python 3.11+"; return 1; }
-  if "$PY" -c 'import pytest' >/dev/null 2>&1; then return 0; fi
+  if "$PY" -c 'import pytest, cryptography' >/dev/null 2>&1; then return 0; fi
   if [ "$USE_VENV" = "1" ]; then
     local venv="$ROOT/.venv-test"
     if [ ! -d "$venv" ]; then
       printf 'creating test virtualenv at .venv-test ...\n'
       "$PY" -m venv "$venv" || { bad "could not create venv"; return 1; }
     fi
-    # Windows-created venvs use Scripts/, not bin/.
-    local activate="$venv/bin/activate"
-    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) activate="$venv/Scripts/activate" ;; esac
-    # shellcheck disable=SC1090
-    . "$activate"
+    if [ -f "$venv/bin/activate" ]; then
+      # shellcheck disable=SC1091
+      . "$venv/bin/activate"
+    elif [ -f "$venv/Scripts/activate" ]; then
+      # shellcheck disable=SC1091
+      . "$venv/Scripts/activate"
+    fi
     PY="$(command -v python)"
     "$PY" -m pip install --quiet --upgrade pip
-    "$PY" -m pip install --quiet pytest requests
-    [ -f "$ANDROID_LAB/requirements.txt" ] && "$PY" -m pip install --quiet -r "$ANDROID_LAB/requirements.txt"
+    "$PY" -m pip install --quiet pytest requests cryptography
+    if [ -f "$ANDROID_LAB/requirements.txt" ]; then
+      "$PY" -m pip install --quiet -r "$ANDROID_LAB/requirements.txt" || true
+    fi
   else
-    "$PY" -m pip install --quiet pytest requests || { bad "pytest unavailable and --no-venv set"; return 1; }
+    "$PY" -m pip install --quiet pytest requests cryptography || { bad "pytest/cryptography unavailable and --no-venv set"; return 1; }
   fi
-  "$PY" -c 'import pytest' >/dev/null 2>&1
+  "$PY" -c 'import pytest, cryptography' >/dev/null 2>&1
 }
 
 # --- Stage 1: android unit tests -------------------------------------------
@@ -89,6 +93,18 @@ if ensure_pytest; then
   fi
 else
   bad "could not prepare a Python environment with pytest"
+fi
+
+# --- PENT-07 golden-file verification --------------------------------------
+hdr "PENT-07 interceptor golden-file verification"
+if [ -n "$PY" ] && [ -f "$ANDROID_LAB/scripts/tamper_runner.py" ]; then
+  if "$PY" "$ANDROID_LAB/scripts/tamper_runner.py" --verify-golden; then
+    ok "PENT-07 golden-file verification"
+  else
+    bad "PENT-07 golden-file verification"
+  fi
+else
+  bad "tamper_runner.py unavailable for PENT-07 verification"
 fi
 
 # Source Lab runs separately to keep its package/test imports out of Android.
@@ -161,6 +177,7 @@ else
     else
       skip "sample analysis pipeline did not complete (non-fatal; needs the analysis deps)"
     fi
+    rm -f "$ANDROID_LAB/scripts/vulnerable-test.apk"
   else
     skip "sample analysis scripts unavailable"
   fi

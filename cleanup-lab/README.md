@@ -165,6 +165,28 @@ in [`VERIFY.md`](VERIFY.md).
   custom entries) with dua-style bars, drill-down and breadcrumbs. The
   explorer never deletes.
 
+## Cleaner Widgets (CLW)
+
+PR #226 ports the reference app's macOS widget feature; the plan lives in
+[`PLAN-cleaner-widgets.md`](PLAN-cleaner-widgets.md), the evidence in
+[`VERIFY.md`](VERIFY.md).
+
+* **Widget snapshot** — one read-only fold of the lab's state
+  (`cleanup_lab.widget`): home-volume numbers, the latest finished scan, the
+  history's reclaim totals, the monitor's schedule and warnings, bookmark
+  flag counts and the FDA probe. Path-free, atomic, and honest about its
+  absence: the App Group container is never created, and machines without
+  it publish nothing.
+* **Desktop app** — a WidgetKit extension (`app/widget`, small/medium/large
+  in the dashboard's own tokens, macOS 14+) whose single action requests a
+  quick clean: the intent's timestamped request is consumed once on focus,
+  and the review still runs through the dashboard's plan → confirm flow.
+  The host reloads timelines through an embedded one-class framework, and
+  `oslab://` deep links route into the dashboard's island router.
+* **Release path** — `release-mac.sh` embeds the signed extension, re-signs
+  and re-notarizes the app and rebuilds the updater bundle; the PR dry run
+  compiles the widget targets.
+
 ## Safety guard
 
 `cleanup_lab/safety.py` guards every filesystem deletion and move. It

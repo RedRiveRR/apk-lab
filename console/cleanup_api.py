@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -58,6 +59,7 @@ BODY_KEYS = {"scan": SCAN_KEYS, "deep-scan": DEEP_KEYS, "plan": PLAN_KEYS, "clea
               "relocation-plan": ("action", "entryId", "destination"), "relocation-run": ("previewId",),
               "monitor-config": ("enabled", "intervalSeconds", "cooldownSeconds", "volumes"),
               "monitor-evaluate": (),
+              "permissions-open": ("permissionId",),
               "bookmarks-add": ("entryId",),
               "bookmarks-update": ("entryId", "priority", "quickClean", "autoCleanHook", "sizeAlert"),
               "bookmarks-remove": ("entryId",),
@@ -213,8 +215,17 @@ class CleanupJobStore:
         return job
 
     def _spawn(self, job, target, args):
+        def run_and_refresh():
+            try:
+                target(*args)
+            finally:
+                # CLW-04: every finished job changes what the widget shows.
+                # Workers with no root argument (the hook clean closes over
+                # it) skip the refresh here — their completion paths publish.
+                if args:
+                    publish_widget(args[0])
         try:
-            threading.Thread(target=target, args=args, daemon=True).start()
+            threading.Thread(target=run_and_refresh, args=(), daemon=True).start()
         except RuntimeError as exc:
             job.state = "failed"
             job.error = "Could not start the job worker: {0}".format(exc)
@@ -712,6 +723,33 @@ def _bookmark_book(root):
     return _module(root, "bookmarks")
 
 
+def _bookmark_catalog_ids(root):
+    """Today's catalog ids, or None when the catalog cannot be read (fail-open:
+    bookmark rows the catalog no longer lists are then kept, as before)."""
+    try:
+        return {entry["id"] for entry in _module(root, "catalog").load(root)}
+    except Exception:
+        return None
+
+
+def publish_widget(root):
+    """CLW-04: refresh the macOS widget snapshot after a state change.
+
+    Builds the snapshot from this process's job list and the engine stores and
+    writes it into the App Group container the widget extension reads. Always
+    best-effort: a machine without the widget (or without macOS) simply skips
+    the write, and no failure here may ever reach a request or the monitor
+    thread.
+    """
+    try:
+        widget = _module(root, "widget")
+        jobs = JOBS.list()
+        payload = widget.build(jobs, jobs)
+        payload["publish"] = widget.publish(payload)
+    except Exception:
+        pass  # the widget is an optional surface; it never breaks the API
+
+
 def _bookmark_entries(root, loaded):
     """Join each bookmark with its catalog record for display."""
     try:
@@ -784,6 +822,7 @@ def run_hook_clean(root):
                 job.error = "{0}: {1}".format(type(exc).__name__, exc)
             finally:
                 job.finishedAt = time.time()
+                publish_widget(root)  # CLW-04: the hook run changed the widget's story
 
         return JOBS._spawn(job, work, ())
 
@@ -850,6 +889,7 @@ class MonitorRunner:
                     if any(event["kind"] == "warning" for event in result.get("newEvents", [])):
                         run_hook_clean(self.root)
                     self._evaluate_bookmark_sizes()
+                    publish_widget(self.root)  # CLW-04: monitor ticks refresh the widget
                     self.stop.wait(config["intervalSeconds"])
                 else:
                     self.stop.wait(self.IDLE_WAIT)
@@ -944,11 +984,27 @@ class CleanupAPI:
                 raise CleanupError(500, "Audit history is unavailable: {0}".format(exc)) from exc
         if path == "/api/cleanup/bookmarks":
             _query(query)
-            loaded = _bookmark_book(self.root).load()
+            loaded = _bookmark_book(self.root).load(catalog_ids=_bookmark_catalog_ids(self.root))
             return {"bookmarks": _bookmark_entries(self.root, loaded), "error": loaded["error"]}
+        if path == "/api/cleanup/widget":
+            # CLW-02: the widget snapshot — one read-only fold of the lab's
+            # state, published into the App Group container as a side effect
+            # (the widget re-reads that file per timeline build).
+            _query(query)
+            widget = _module(self.root, "widget")
+            jobs = JOBS.list()
+            payload = widget.build(jobs, jobs)
+            payload["publish"] = widget.publish(payload)
+            return payload
         if path == "/api/cleanup/jobs":
             _query(query)
             return {"jobs": JOBS.list()}
+        if path == "/api/cleanup/explorer/roots":
+            # CLNP-23: the read-only root list the Space Explorer opens with.
+            # The dashboard GETs this; it used to live in post(), which both
+            # 404'd the GET and NameError'd on _query's missing variable.
+            _query(query)
+            return {"roots": _module(self.root, "explorer").roots(self.root)}
         if path.startswith("/api/cleanup/jobs/"):
             _query(query)
             parts = path.strip("/").split("/")
@@ -1025,6 +1081,31 @@ class CleanupAPI:
         if path == "/api/cleanup/leftovers/scan":
             _object_body(body, "leftovers")
             return JOBS.start_leftovers(self.root)
+        if path == "/api/cleanup/permissions/open-settings":
+            # The grant deep link: the page can only name a permission; the
+            # console opens the engine's fixed links (modern pane first, then
+            # the legacy pane) with ``open``. The in-app dashboard cannot open
+            # a custom scheme itself — the webview swallows the navigation —
+            # so the OS call lives here, exactly like app_update's ``open``.
+            _object_body(body, "permissions-open")
+            permission_id = body.get("permissionId")
+            if not isinstance(permission_id, str) or not permission_id:
+                raise CleanupError(400, "permissionId must name a permission record")
+            urls = _module(self.root, "permissions").settings_urls(permission_id)
+            if not urls:
+                raise CleanupError(409, "{0} has no settings pane to open on this platform".format(permission_id))
+            opened = None
+            for url in urls:
+                try:
+                    run = subprocess.run(["open", url], capture_output=True, timeout=10)
+                except (OSError, subprocess.SubprocessError):
+                    continue
+                if run.returncode == 0:
+                    opened = url
+                    break
+            if opened is None:
+                raise CleanupError(500, "Could not open System Settings; follow the guidance link instead")
+            return {"permissionId": permission_id, "opened": opened}
         if path == "/api/cleanup/monitor/config":
             _object_body(body, "monitor-config")
             monitor = _module(self.root, "monitor")
@@ -1032,6 +1113,7 @@ class CleanupAPI:
                 monitor.save_config(body)
             except monitor.MonitorConfigError as exc:
                 raise CleanupError(400, str(exc)) from exc
+            publish_widget(self.root)
             payload = monitor.status()
             payload["running"] = bool(payload["enabled"] and MONITOR.alive())
             return payload
@@ -1039,6 +1121,7 @@ class CleanupAPI:
             _object_body(body, "monitor-evaluate")
             monitor = _module(self.root, "monitor")
             monitor.run_evaluation()
+            publish_widget(self.root)
             payload = monitor.status()
             payload["running"] = bool(payload["enabled"] and MONITOR.alive())
             return payload
@@ -1055,10 +1138,11 @@ class CleanupAPI:
             if entry_id not in catalog_ids:
                 raise CleanupError(400, "Unknown detector id: {0}".format(entry_id))
             try:
-                loaded = bookmarks_mod.load()
+                loaded = bookmarks_mod.load(catalog_ids=catalog_ids)
                 result = bookmarks_mod.add(entry_id, loaded["bookmarks"], clock=time.time, catalog_ids=catalog_ids)
             except bookmarks_mod.BookmarksError as exc:
                 raise CleanupError(409, str(exc)) from exc
+            publish_widget(self.root)
             return {"bookmarks": _bookmark_entries(self.root, result), "error": result["error"]}
         if path == "/api/cleanup/bookmarks/update":
             _object_body(body, "bookmarks-update")
@@ -1070,10 +1154,11 @@ class CleanupAPI:
             if not changes:
                 raise CleanupError(400, "An update names at least one change")
             try:
-                loaded = bookmarks_mod.load()
+                loaded = bookmarks_mod.load(catalog_ids=_bookmark_catalog_ids(self.root))
                 result = bookmarks_mod.update(entry_id, changes, loaded["bookmarks"])
             except bookmarks_mod.BookmarksError as exc:
                 raise CleanupError(400, str(exc)) from exc
+            publish_widget(self.root)
             return {"bookmarks": _bookmark_entries(self.root, result), "error": result["error"]}
         if path == "/api/cleanup/bookmarks/remove":
             _object_body(body, "bookmarks-remove")
@@ -1082,15 +1167,16 @@ class CleanupAPI:
                 raise CleanupError(400, "entryId must name a bookmarked entry")
             bookmarks_mod = _bookmark_book(self.root)
             try:
-                loaded = bookmarks_mod.load()
+                loaded = bookmarks_mod.load(catalog_ids=_bookmark_catalog_ids(self.root))
                 result = bookmarks_mod.remove(entry_id, loaded["bookmarks"])
             except bookmarks_mod.BookmarksError as exc:
                 raise CleanupError(404, str(exc)) from exc
+            publish_widget(self.root)
             return {"bookmarks": _bookmark_entries(self.root, result), "error": result["error"]}
         if path == "/api/cleanup/bookmarks/quick-clean":
             _object_body(body, "bookmarks-quick-clean")
             bookmarks_mod = _bookmark_book(self.root)
-            loaded = bookmarks_mod.load()
+            loaded = bookmarks_mod.load(catalog_ids=_bookmark_catalog_ids(self.root))
             if loaded["error"]:
                 raise CleanupError(500, loaded["error"])
             try:
@@ -1128,6 +1214,7 @@ class CleanupAPI:
                                      platform=platform, catalog_ids=catalog_ids)
             except overlay.CustomCatalogError as exc:
                 raise CleanupError(400, str(exc)) from exc
+            publish_widget(self.root)  # the new folder is bookmarkable material
             return {"entries": result["entries"], "error": result["error"]}
         if path == "/api/cleanup/custom-entries/remove":
             _object_body(body, "custom-remove")
@@ -1150,10 +1237,8 @@ class CleanupAPI:
                     result["bookmarks"] = bookmarks_mod.remove(entry_id, loaded["bookmarks"])["bookmarks"]
                 except bookmarks_mod.BookmarksError:
                     pass
+            publish_widget(self.root)
             return result
-        if path == "/api/cleanup/explorer/roots":
-            _query(query)
-            return {"roots": _module(self.root, "explorer").roots(self.root)}
         if path == "/api/cleanup/explorer/scan":
             _object_body(body, "explorer-scan")
             return JOBS.start_explorer(self.root, body)

@@ -52,10 +52,15 @@ def clean_jobs(tmp_path, monkeypatch):
     drain()
     cleanup_api.JOBS.jobs.clear()
     cleanup_api.PLANS.plans.clear()
+    # Stop the background monitor thread: a tick that wakes mid-test would
+    # evaluate against the same (fixture) store and race the foreground
+    # evaluate assertions. The next CleanupAPI() constructor restarts it.
+    cleanup_api.MONITOR.stop.set()
     yield
     drain()
     cleanup_api.JOBS.jobs.clear()
     cleanup_api.PLANS.plans.clear()
+    cleanup_api.MONITOR.stop.set()
 
 
 def catalog_cache_target(tmp_path, monkeypatch):
@@ -719,6 +724,92 @@ def test_the_permissions_endpoint_classifies_the_latest_scan_unreadable(tmp_path
     ]
 
 
+def test_the_grant_endpoint_opens_the_engine_panes_and_never_a_page_url(monkeypatch):
+    """The open-settings round-trip: the page names a permission, the console
+    opens the engine's fixed panes (modern first, legacy fallback) — never a
+    string the page supplied. The in-app deep link used to be a plain anchor,
+    which the webview silently swallows, so the grant action never worked."""
+    import types
+    import cleanup_lab.permissions as permissions_module
+
+    modern = "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"
+    legacy = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+    opened = []
+
+    def fake_run(args, capture_output, timeout):
+        opened.append(args)
+        return types.SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(permissions_module, "settings_urls",
+                        lambda permission_id, platform=None: (modern, legacy))
+    monkeypatch.setattr(cleanup_api.subprocess, "run", fake_run)
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    result = api.post("/api/cleanup/permissions/open-settings", {"permissionId": "macos-full-disk-access"})
+    assert result == {"permissionId": "macos-full-disk-access", "opened": modern}
+    assert opened == [["open", modern]]
+
+    # the modern pane failing falls through to the legacy pane
+    opened.clear()
+    flip = {"first": True}
+
+    def legacy_fallback(args, capture_output, timeout):
+        opened.append(args)
+        if flip["first"]:
+            flip["first"] = False
+            return types.SimpleNamespace(returncode=1, stdout=b"", stderr=b"boom")
+        return types.SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(cleanup_api.subprocess, "run", legacy_fallback)
+    result = api.post("/api/cleanup/permissions/open-settings", {"permissionId": "hidden-roots"})
+    assert result["opened"] == legacy
+    assert [args[1] for args in opened] == [modern, legacy]
+
+    # everything the engine does not own is refused, URL-shaped ids included
+    opened.clear()
+    monkeypatch.setattr(permissions_module, "settings_urls",
+                        lambda permission_id, platform=None: ())
+    with pytest.raises(cleanup_api.CleanupError) as caught:
+        api.post("/api/cleanup/permissions/open-settings",
+                 {"permissionId": "x-apple.systempreferences:https://example.com"})
+    assert caught.value.status == 409
+    with pytest.raises(cleanup_api.CleanupError) as caught:
+        api.post("/api/cleanup/permissions/open-settings", {"permissionId": "not-a-record"})
+    assert caught.value.status == 409
+    with pytest.raises(cleanup_api.CleanupError) as caught:
+        api.post("/api/cleanup/permissions/open-settings", {})
+    assert caught.value.status == 400
+    with pytest.raises(cleanup_api.CleanupError) as caught:
+        api.post("/api/cleanup/permissions/open-settings", {"permissionId": "x", "url": "https://example.com"})
+    assert caught.value.status == 400
+    assert opened == []
+
+
+def test_the_real_registry_answers_open_settings_refusals_off_macos(monkeypatch):
+    """With the real engine registry, an unknown id is refused everywhere and
+    the known ids answer with the fixed modern-first pane order on macOS."""
+    import types
+    import cleanup_lab.permissions as permissions_module
+
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    with pytest.raises(cleanup_api.CleanupError) as caught:
+        api.post("/api/cleanup/permissions/open-settings", {"permissionId": "made-up"})
+    assert caught.value.status == 409
+
+    real_urls = permissions_module.FDA_SETTINGS_URLS
+    monkeypatch.setattr(paths_module, "platform_id", lambda: "macos")
+    opened = []
+
+    def fake_run(args, capture_output, timeout):
+        opened.append(args)
+        return types.SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(cleanup_api.subprocess, "run", fake_run)
+    result = api.post("/api/cleanup/permissions/open-settings", {"permissionId": "macos-full-disk-access"})
+    assert result["opened"] == real_urls[0]
+    assert result["opened"].startswith("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension")
+    assert opened == [["open", real_urls[0]]]
+
+
 def test_the_monitor_endpoint_reports_disabled_state_without_probing(monkeypatch):
     import cleanup_lab.monitor as monitor_module
 
@@ -817,6 +908,44 @@ def test_bookmark_endpoints_are_typed_and_catalog_bound(monkeypatch, tmp_path):
     with pytest.raises(cleanup_api.CleanupError) as caught:
         api.post("/api/cleanup/bookmarks/remove", {"entryId": "system.user-caches"})
     assert caught.value.status == 404
+
+
+def test_a_stale_bookmark_row_no_longer_bricks_adds(monkeypatch, tmp_path):
+    """One store row naming an entry the catalog no longer lists used to make
+    every add 409 with "Unknown catalog entry: <that row>" — the live 0.3.7
+    console hit exactly this with a leftover test row. Loads that know the
+    catalog now drop and name such rows and persist the heal right away, so
+    the notice is one-time instead of repeating on every page load."""
+    _bookmark_env(monkeypatch, tmp_path)
+    import json as _json
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "bookmarks.json").write_text(_json.dumps({
+        "version": 1,
+        "bookmarks": [
+            {"entryId": "a", "createdAt": 1001.0, "priority": 1},
+            {"entryId": "system.user-caches", "createdAt": 1002.0, "priority": 2},
+        ],
+    }))
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    # The read side reports the dropped row instead of hiding it.
+    listed = api.get("/api/cleanup/bookmarks", {})
+    assert [item["entryId"] for item in listed["bookmarks"]] == ["system.user-caches"]
+    assert "no longer lists" in (listed["error"] or "")
+    # The heal persisted: the file no longer carries the stale row and the
+    # follow-up GET is clean.
+    healed_store = _json.loads((state / "bookmarks.json").read_text())
+    assert [item["entryId"] for item in healed_store["bookmarks"]] == ["system.user-caches"]
+    again = api.get("/api/cleanup/bookmarks", {})
+    assert again["error"] is None
+    assert [item["entryId"] for item in again["bookmarks"]] == ["system.user-caches"]
+    # The add no longer 409s, and its save persists the healed store.
+    report = api.post("/api/cleanup/bookmarks", {"entryId": "developers.npm"})
+    assert report["error"] is None
+    ids = [item["entryId"] for item in report["bookmarks"]]
+    assert ids == ["system.user-caches", "developers.npm"]
+    healed = _json.loads((state / "bookmarks.json").read_text())
+    assert [item["entryId"] for item in healed["bookmarks"]] == ids
 
 
 def test_quick_clean_builds_a_trash_plan_from_flagged_bookmarks(monkeypatch, tmp_path):
@@ -947,3 +1076,78 @@ def test_custom_entries_are_validated_once_then_addressed_by_id(monkeypatch, tmp
     with pytest.raises(cleanup_api.CleanupError) as caught:
         api.post("/api/cleanup/custom-entries/remove", {"entryId": "system.user-caches"})
     assert caught.value.status == 400
+
+
+def test_the_explorer_roots_are_served_over_get():
+    """CLNP-23: the Space Explorer opens with a GET; the route must live in get().
+
+    The route shipped in post(), so the dashboard's GET fell through to the
+    generic 404 ("Cleanup Lab endpoint not found") and the tab errored out.
+    """
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    payload = api.get("/api/cleanup/explorer/roots", {})
+    assert isinstance(payload["roots"], list) and payload["roots"]
+    for entry in payload["roots"]:
+        assert entry["id"] and entry["name"]
+        assert entry["source"] == "deep-roots"
+        assert isinstance(entry["available"], bool)
+
+
+def test_the_widget_endpoint_returns_the_snapshot_and_publishes(tmp_path, monkeypatch):
+    """CLW-02: one read-only fold, published into the (overridden) container."""
+    group = tmp_path / "group"
+    group.mkdir()
+    monkeypatch.setenv("OSLAB_WIDGET_GROUP_DIR", str(group))
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    payload = api.get("/api/cleanup/widget", {})
+    assert payload["schemaVersion"] == 1
+    assert payload["platform"] in ("macos", "linux", "windows")
+    assert isinstance(payload["capable"], bool)
+    for section in ("disk", "cleanup", "monitor", "bookmarks", "permissions"):
+        assert section in payload
+    assert payload["status"] in ("cleaning", "scanning", "ready-to-clean", "up-to-date")
+    assert payload["publish"]["published"] is True
+    snapshot = json.loads((group / "widget-snapshot.json").read_text())
+    assert snapshot["schemaVersion"] == payload["schemaVersion"]
+    # No free-form paths beyond the mount point may leak into the file.
+    assert "entryIds" not in json.dumps(snapshot)
+    assert "planId" not in json.dumps(snapshot)
+
+
+def test_the_widget_publishes_honestly_without_a_container(tmp_path, monkeypatch):
+    monkeypatch.delenv("OSLAB_WIDGET_GROUP_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    payload = api.get("/api/cleanup/widget", {})
+    assert payload["capable"] is False
+    assert payload["publish"]["published"] is False
+    assert payload["publish"]["reason"]
+
+
+def test_the_widget_reflects_a_finished_scan_and_publishes_on_completion(tmp_path, monkeypatch):
+    """CLW-04: the job worker's publish hook writes the file without a poll."""
+    group = tmp_path / "group"
+    group.mkdir()
+    monkeypatch.setenv("OSLAB_WIDGET_GROUP_DIR", str(group))
+    target = catalog_cache_target(tmp_path, monkeypatch)
+    with open(os.path.join(target, "one.bin"), "wb") as handle:
+        handle.write(b"x" * 64)
+    api = cleanup_api.CleanupAPI(REPO_ROOT)
+    job = api.post("/api/cleanup/scan", {"entryIds": ["system.user-caches"], "workers": 1})
+    wait_for(job, "done")
+    # The _spawn hook publishes without any GET — poll the file briefly.
+    deadline = time.time() + 5
+    payload = None
+    while time.time() < deadline:
+        path = group / "widget-snapshot.json"
+        if path.exists():
+            payload = json.loads(path.read_text())
+            if payload.get("lastScan"):
+                break
+        time.sleep(0.05)
+    assert payload and payload["lastScan"], "the finished scan never reached the widget"
+    assert payload["lastScan"]["foundBytes"] == 64
+    assert payload["status"] in ("ready-to-clean", "up-to-date")
+    fetched = api.get("/api/cleanup/widget", {})
+    assert fetched["lastScan"]["foundBytes"] == 64

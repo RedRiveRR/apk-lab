@@ -31,6 +31,15 @@ from . import paths
 
 #: macOS settings deep link for Full Disk Access (client-side render only).
 FDA_GRANT_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+#: The deep links the console opens for a grant, modern pane first (macOS 13+
+#: privacy extension) with the legacy pane as fallback — the legacy form is a
+#: compatibility shim that may stop resolving. The console tries them in order
+#: and stops at the first that lands (the qLar pattern); the page can only name
+#: a permission, never supply one of these URLs itself.
+FDA_SETTINGS_URLS = (
+    "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+)
 FDA_GUIDANCE = (
     "Grant the app running the console Full Disk Access under "
     "System Settings → Privacy & Security → Full Disk Access, then re-check."
@@ -73,6 +82,23 @@ NAMES = {
     "macos-downloads-folder": "Downloads folder access",
     "hidden-roots": "Hidden folders",
 }
+
+
+def settings_urls(permission_id, platform=None):
+    """The fixed System Settings deep links for one registry id, in open order.
+
+    Every macOS TCC grant here funnels through the Full Disk Access pane (the
+    folder grants are covered by FDA too), so the registry maps each known id
+    to :data:`FDA_SETTINGS_URLS`. An unknown id, or any platform where the
+    panes do not exist, yields an empty tuple — the caller answers with a
+    refusal instead of guessing a URL. This is the whole steerable surface:
+    the page names a permission, the console opens exactly these links.
+    """
+    if (platform or paths.platform_id()) != "macos":
+        return ()
+    if permission_id not in NAMES:
+        return ()
+    return FDA_SETTINGS_URLS
 
 
 def _hidden(path, platform=None):
@@ -254,5 +280,6 @@ def report(candidate_paths=(), *, platform=None, env=None, prober=None):
 
 
 __all__ = [
-    "FDA_GRANT_URL", "classify_unreadable", "fda", "probe", "report",
+    "FDA_GRANT_URL", "FDA_SETTINGS_URLS", "classify_unreadable", "fda", "probe",
+    "report", "settings_urls",
 ]

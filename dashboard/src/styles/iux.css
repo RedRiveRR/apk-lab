@@ -425,9 +425,11 @@ dialog.iux-modal::backdrop {
   }
 }
 
-/* Right-side panel toggled from the lab header (iOS Simulator), like a docked inspector. */
-.iux-sidepanel {
-  animation: iux-sidepanel-in 0.25s ease both;
+/* The simulator overlays small viewports and docks beside the lab on desktop. */
+@media (max-width: 1023px) {
+  .iux-sidepanel {
+    animation: iux-sidepanel-in 0.25s ease both;
+  }
 }
 @keyframes iux-sidepanel-in {
   from {

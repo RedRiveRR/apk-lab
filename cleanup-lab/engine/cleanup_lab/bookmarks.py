@@ -134,8 +134,17 @@ def _write_atomic(path, payload):
     os.replace(temporary, path)
 
 
-def load(env=None, platform=None):
-    """The validated bookmarks, or an empty list plus the reason it cannot be read."""
+def load(env=None, platform=None, catalog_ids=None):
+    """The validated bookmarks, or an empty list plus the reason it cannot be read.
+
+    With ``catalog_ids``, rows naming entries the catalog no longer knows are
+    dropped and named in ``error`` instead of poisoning every later save —
+    one stale row (a renamed catalog id, a test artifact) used to 409 every
+    add, update and remove with ``Unknown catalog entry`` for an entry the
+    request never mentioned. The healed list is persisted right here, so the
+    drop is reported once and every later read is clean; without
+    ``catalog_ids`` every stored row is kept as-is and nothing is written.
+    """
     path = _store_path(env, platform)
     try:
         with open(path, encoding="utf-8") as handle:
@@ -147,6 +156,7 @@ def load(env=None, platform=None):
     if not isinstance(raw, dict) or raw.get("version") != VERSION or not isinstance(raw.get("bookmarks"), list):
         return {"bookmarks": [], "error": "The bookmark store has an unknown shape; defaults apply."}
     bookmarks = []
+    dropped = []
     seen = set()
     try:
         for record in raw["bookmarks"]:
@@ -154,10 +164,21 @@ def load(env=None, platform=None):
             if validated["entryId"] in seen:
                 raise BookmarksError("entry {0!r} is bookmarked twice".format(validated["entryId"]))
             seen.add(validated["entryId"])
+            if catalog_ids is not None and validated["entryId"] not in catalog_ids:
+                dropped.append(validated["entryId"])
+                continue
             bookmarks.append(validated)
     except BookmarksError as exc:
         return {"bookmarks": [], "error": "The bookmark store is invalid: {0}".format(exc)}
-    return {"bookmarks": sorted(bookmarks, key=lambda item: (item["priority"], item["createdAt"])), "error": None}
+    error = None
+    if dropped:
+        error = "Dropped {0} bookmark(s) the catalog no longer lists: {1}".format(
+            len(dropped), ", ".join(dropped))
+        try:
+            save(bookmarks, env=env, platform=platform, catalog_ids=catalog_ids)
+        except (BookmarksError, OSError):
+            pass  # an unwritable store degrades to the in-memory heal only
+    return {"bookmarks": sorted(bookmarks, key=lambda item: (item["priority"], item["createdAt"])), "error": error}
 
 
 def save(bookmarks, *, env=None, platform=None, catalog_ids=None):

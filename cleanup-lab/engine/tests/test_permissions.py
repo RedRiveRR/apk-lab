@@ -195,5 +195,32 @@ class Report(unittest.TestCase):
         self.assertNotIn("classification", payload)
 
 
+class SettingsDeepLinks(unittest.TestCase):
+    """The console's open-settings surface: fixed links only, registry ids only."""
+
+    def test_known_id_returns_the_fixed_panes_modern_first(self):
+        urls = permissions.settings_urls("macos-full-disk-access", platform="macos")
+        self.assertEqual(urls, permissions.FDA_SETTINGS_URLS)
+        self.assertTrue(urls[0].startswith("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"))
+        self.assertTrue(urls[1].startswith("x-apple.systempreferences:com.apple.preference.security"))
+
+    def test_every_registered_macos_id_maps_to_the_panes(self):
+        for permission_id in permissions.NAMES:
+            self.assertEqual(
+                permissions.settings_urls(permission_id, platform="macos"),
+                permissions.FDA_SETTINGS_URLS,
+            )
+
+    def test_unknown_id_yields_nothing(self):
+        # A page-supplied URL-shaped id must resolve to no link at all.
+        self.assertEqual(permissions.settings_urls("x-apple.systempreferences:https://example.com"), ())
+        self.assertEqual(permissions.settings_urls(""), ())
+        self.assertEqual(permissions.settings_urls(None), ())
+
+    def test_non_macos_yields_nothing(self):
+        self.assertEqual(permissions.settings_urls("macos-full-disk-access", platform="linux"), ())
+        self.assertEqual(permissions.settings_urls("macos-full-disk-access", platform="windows"), ())
+
+
 if __name__ == "__main__":
     unittest.main()

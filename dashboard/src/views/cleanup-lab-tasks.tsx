@@ -458,6 +458,48 @@ const tasks: CleanupTask[] = [
     ],
     targetPaths: ["cleanup-lab/engine/", "console/", "dashboard/src/views/cleanup/"],
   },
+  {
+    id: "CLW-01…02",
+    title: "Widget snapshot: one read-only fold of the lab's state",
+    priority: "High",
+    effort: "Medium",
+    summary:
+      "cleanup_lab.widget folds the existing engine payloads — home-volume disk numbers, the latest finished scan, the history's reclaim totals, the monitor's schedule and warnings, bookmark flag counts and the FDA probe — into one typed, path-free snapshot, published atomically into the macOS App Group container the widget extension reads. The container is never created; machines without it publish nothing, and GET /api/cleanup/widget builds and publishes in one call.",
+    deliverables: [
+      "Path-free payload with schemaVersion; status derivation matches the reference",
+      "Console republishes on job completion, monitor ticks and mutations",
+      "14 engine tests + 3 console contract tests, OSLAB_WIDGET_GROUP_DIR as the test seam",
+    ],
+    targetPaths: ["cleanup-lab/engine/", "console/"],
+  },
+  {
+    id: "CLW-03…09",
+    title: "Desktop app: WidgetKit extension, reload bridge and deep links",
+    priority: "High",
+    effort: "Large",
+    summary:
+      "app/widget builds the WidgetKit extension (small/medium/large layouts in the dashboard's own tokens, macOS 14+) and a one-class reloader framework the Tauri host dlopen's to call WidgetCenter. The quick-clean intent writes a timestamped request consumed once on focus with a 120-second max age; the dashboard's plan → confirm flow still runs. oslab:// deep links route whitelisted ids through the island router. release-mac.sh embeds, re-signs and re-notarizes.",
+    deliverables: [
+      "Universal appex + framework built by xcodegen/xcodebuild; entitlements carry the App Group",
+      "Rust bridge with 5 tests; oslab:// via tauri-plugin-deep-link",
+      "release-mac.sh embed + re-sign + re-notarize + updater rebuild; PR dry run compiles the targets",
+    ],
+    targetPaths: ["app/widget/", "app/src-tauri/", "app/scripts/"],
+  },
+  {
+    id: "CLW-10…13",
+    title: "Dashboard widgets card, locales and evidence",
+    priority: "Medium",
+    effort: "Medium",
+    summary:
+      "The overview gains a Desktop widgets capability card and section: a live preview of exactly what the widget renders, a Publish-now button over the snapshot endpoint, honest not-capable notes and add-the-widget guidance. The app's deep links and quick-clean intent land as whitelisted globals; 27 new strings ship across the seven locales with an e2e spec covering preview, degradation and routing.",
+    deliverables: [
+      "WidgetsCard degrades on non-conforming payloads instead of crashing",
+      "__oslabNavigate / __oslabQuickClean follow the plan → confirm flow",
+      "2528 keys × 7 locales green; cleanup-widgets.spec.ts green; lat.md, README, STATUS, VERIFY updated",
+    ],
+    targetPaths: ["dashboard/src/views/cleanup/", "dashboard/src/i18n/", "cleanup-lab/"],
+  },
 ];
 
 export const CLEANUP_LAB_TASKS: TodoTask[] = tasks.map((t) => ({

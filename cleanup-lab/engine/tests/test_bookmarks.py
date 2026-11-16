@@ -89,6 +89,56 @@ class StoreRoundTrip(unittest.TestCase):
             self.assertEqual(duplicated["bookmarks"], [])
             self.assertIn("twice", duplicated["error"])
 
+    def test_load_with_catalog_drops_unknown_rows_and_names_them(self):
+        """A row the catalog no longer lists must not poison every later save.
+
+        One stale row (renamed catalog id, test artifact) used to make every
+        add/update/remove raise ``Unknown catalog entry`` for an entry the
+        request never mentioned; with catalog_ids the row is dropped, named
+        in ``error``, and the heal is persisted right away — follow-up reads
+        are clean instead of repeating the notice forever.
+        """
+        with tempfile.TemporaryDirectory() as base:
+            env = env_state(base)
+            # Write without catalog_ids so the stale row lands on disk.
+            bookmarks.save([
+                record("system.user-caches", 1),
+                record("a", 2),
+            ], env=env, catalog_ids=None)
+            ids = {item["id"] for item in CATALOG}
+            healed = bookmarks.load(env=env, catalog_ids=ids)
+            self.assertEqual([item["entryId"] for item in healed["bookmarks"]],
+                             ["system.user-caches"])
+            self.assertIn("a", healed["error"])
+            self.assertIn("no longer lists", healed["error"])
+            # The heal persisted: the stale row is gone from the file itself.
+            with open(os.path.join(base, "bookmarks.json"), encoding="utf-8") as handle:
+                stored = json.load(handle)
+            self.assertEqual([item["entryId"] for item in stored["bookmarks"]],
+                             ["system.user-caches"])
+            # Follow-up reads are clean — no repeated notice.
+            again = bookmarks.load(env=env, catalog_ids=ids)
+            self.assertEqual([item["entryId"] for item in again["bookmarks"]],
+                             ["system.user-caches"])
+            self.assertIsNone(again["error"])
+            # A bare load stays a fail-open read and writes nothing: on a file
+            # that still carries the stale row, both rows come back untouched.
+            bookmarks.save([
+                record("system.user-caches", 1),
+                record("a", 2),
+            ], env=env, catalog_ids=None)
+            as_is = bookmarks.load(env=env)
+            self.assertEqual(len(as_is["bookmarks"]), 2)
+            self.assertIsNone(as_is["error"])
+            with open(os.path.join(base, "bookmarks.json"), encoding="utf-8") as handle:
+                untouched = json.load(handle)
+            self.assertEqual(len(untouched["bookmarks"]), 2)
+            # The add still appends over the healed list.
+            result = bookmarks.add("dev.pip-cache", healed["bookmarks"],
+                                   clock=lambda: 3000.0, catalog_ids=ids)
+            self.assertEqual([item["entryId"] for item in result["bookmarks"]],
+                             ["system.user-caches", "dev.pip-cache"])
+
     def test_add_is_once_per_entry_and_appends_priority(self):
         current = [record("system.user-caches", 1)]
         result = bookmarks.add("dev.pip-cache", current, clock=lambda: 2000.0,

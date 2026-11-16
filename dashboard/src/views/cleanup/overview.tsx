@@ -11,7 +11,7 @@
  */
 import {
   ArrowRightIcon, ArrowsClockwiseIcon, BroomIcon, BugIcon, CubeIcon, CubeTransparentIcon,
-  HardDrivesIcon, MagnifyingGlassIcon, ShieldCheckIcon, SparkleIcon, TrayIcon, WrenchIcon,
+  HardDrivesIcon, MagnifyingGlassIcon, ShieldCheckIcon, SparkleIcon, SquaresFourIcon, TrayIcon, WrenchIcon,
   ArchiveIcon, PuzzlePieceIcon, PackageIcon
 } from "@phosphor-icons/react";
 import { Section } from "../../components/ui";
@@ -118,13 +118,14 @@ const CARDS: { group: string; cards: OverviewCard[] }[] = [
     group: "System & maintenance",
     cards: [
       { id: "monitor", title: "Background monitor", description: "Warns when free space crosses a threshold", icon: <ShieldCheckIcon size={18} />, target: "cleanup-monitor", onTab: false },
+      { id: "widgets", title: "Desktop widgets", description: "Glanceable status in macOS Notification Center", icon: <SquaresFourIcon size={18} />, target: "cleanup-widgets", onTab: false },
       { id: "permissions", title: "Permissions", description: "Full Disk Access and hidden-folder grants", icon: <ShieldCheckIcon size={18} />, target: "cleanup-permissions", onTab: false },
       { id: "containers", title: "Containers & VMs", description: "Docker, Podman and virtual-machine inventories", icon: <CubeIcon size={18} />, target: "scan/", onTab: true },
       { id: "packages", title: "Package review", description: "Homebrew, pip and gem cleanup candidates", icon: <PackageIcon size={18} />, target: "scan/", onTab: true },
       { id: "privileged", title: "Privileged actions", description: "System maintenance through the desktop's own elevation", icon: <WrenchIcon size={18} />, target: "scan/", onTab: true, available: false, note: "Check availability on the Advanced scan page" },
       { id: "projects", title: "Projects deep scan", description: "Marker-verified build artifacts and projects", icon: <CubeTransparentIcon size={18} />, target: "scan/", onTab: true },
       { id: "simulators", title: "Simulators", description: "iOS and Android simulator inventories", icon: <PuzzlePieceIcon size={18} />, target: "scan/", onTab: true },
-      { id: "relocation", title: "Relocation", description: "Move a cache to another volume behind a symlink", icon: <ArrowsClockwiseIcon size={18} />, target: "scan/", onTab: true },
+      { id: "relocation", title: "Relocation", description: "Move a cache to another volume behind a symlink", icon: <ArrowsClockwiseIcon size={18} />, target: "relocation/", onTab: true },
       { id: "storage", title: "Volumes", description: "Every local volume, capacity and pressure", icon: <HardDrivesIcon size={18} />, target: "overview-storage", onTab: false },
     ],
   },

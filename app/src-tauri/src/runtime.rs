@@ -68,6 +68,8 @@ const BUNDLE_FILES: &[&str] = &[
     "ios-lab/mac/run-simulator.sh",
     "ios-lab/mac/stop-simulator.sh",
     "ios-lab/mac/appium.sh",
+    "web-lab/Makefile",
+    "web-lab/browser/Cargo.toml",
 ];
 
 /// A staged installer must contain the console, dashboard, legal baseline and lab entry points.
@@ -131,6 +133,16 @@ pub fn sync_tree(src: &Path, dst: &Path) -> io::Result<usize> {
             };
             if !same {
                 fs::copy(entry.path(), &target)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Ok(meta) = fs::metadata(entry.path()) {
+                        let perm = meta.permissions();
+                        if perm.mode() & 0o111 != 0 {
+                            let _ = fs::set_permissions(&target, fs::Permissions::from_mode(perm.mode()));
+                        }
+                    }
+                }
                 copied += 1;
             }
         }

@@ -167,3 +167,39 @@ def test_winapps_audit_tool_shows_agent_rows_without_restricted_identities(on_wi
     assert [(row["audience"], row["app"]) for row in rows][:1] == [("agent", None)]
     assert "msedge" not in json.dumps(rows) and "1Password" not in json.dumps(rows)
     winapps_guard._reset_audit()
+
+
+# ── MCP spec: tool arguments travel as `arguments` ────────────────────────────
+
+def test_the_spec_key_arguments_reaches_the_tool(on_windows, monkeypatch):
+    seen = {}
+
+    def fake(root, window_id, audience, *, tool=None):
+        seen["window_id"] = window_id
+        return b"\x89PNG\r\n\x1a\nxx"
+
+    monkeypatch.setattr(winapps_guard, "screenshot", fake)
+    result = rpc("tools/call", {"name": "winapps_screenshot", "arguments": {"windowId": 21}})
+    assert result["isError"] is False and seen == {"window_id": 21}
+
+
+def test_arguments_wins_over_the_legacy_args_key(on_windows, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(winapps_guard, "screenshot",
+                        lambda root, window_id, audience, *, tool=None: seen.update(id=window_id) or b"\x89PNG\r\n\x1a\nxx")
+    rpc("tools/call", {"name": "winapps_screenshot", "arguments": {"windowId": 5}, "args": {"windowId": 9}})
+    assert seen == {"id": 5}
+
+
+@pytest.mark.parametrize("arguments", ["x", 5, [1], [], 0])
+def test_non_object_arguments_key_is_refused_for_windows_tools(on_windows, arguments):
+    result = rpc("tools/call", {"name": "winapps_screenshot", "arguments": arguments})
+    assert result["isError"] is True and payload(result)["code"] == "INVALID_ARGS"
+
+
+def test_macos_tools_also_read_the_spec_key(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(mcp_server.oslab, "macos_search_elements",
+                        lambda root, window_id, query: seen.update(w=window_id, q=query) or {"count": 0, "hits": []})
+    result = rpc("tools/call", {"name": "macos_search", "arguments": {"windowId": 3, "query": "Save"}})
+    assert result["isError"] is False and seen == {"w": 3, "q": "Save"}

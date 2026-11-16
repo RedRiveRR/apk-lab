@@ -922,13 +922,19 @@ def _ax_helper(root: str) -> str | None:
     return path if os.path.isfile(path) and os.access(path, os.X_OK) else None
 
 
+def _ax_command(helper: str) -> list[str]:
+    """The argv prefix that runs the helper. A .py stand-in (OSLAB_AX_HELPER in tests and Linux CI)
+    runs through this interpreter: Windows cannot execute a script file directly."""
+    return [sys.executable, helper] if helper.endswith(".py") else [helper]
+
+
 def _ax_call(root: str, args: list[str], timeout: float = 20) -> dict:
     """One ax-helper invocation; its JSON error payload becomes a coded PlanError."""
     helper = _ax_helper(root)
     if not helper:
         raise PlanError("The native AX helper is not built; run Build AX helper in the macOS Lab page "
                         "(or reads fall back to osascript where supported)", code="HELPER_MISSING", retry="retry")
-    code, output = _capture([helper] + args, timeout=timeout)
+    code, output = _capture(_ax_command(helper) + args, timeout=timeout)
     payload: dict = {}
     if output.strip().startswith("{"):
         try:
@@ -1517,7 +1523,7 @@ def macos_permissions(root: str) -> dict:
     named = app or "the app that launched the console"
     trusted: bool | None = None
     if host_os() == "macos" and _ax_helper(root):
-        code, output = _capture([_ax_helper(root), "trusted"], timeout=10)
+        code, output = _capture(_ax_command(_ax_helper(root)) + ["trusted"], timeout=10)
         if code == 0 and output.strip().startswith("{"):
             try:
                 trusted = bool(json.loads(output).get("trusted"))
@@ -1543,7 +1549,7 @@ def macos_request_access(root: str, data: dict) -> dict:
         raise PlanError("pane must be accessibility or screen-recording", code="INVALID_ARGS")
     prompted: bool | None = None
     if pane == "accessibility" and _ax_helper(root):
-        code, output = _capture([_ax_helper(root), "request-access"], timeout=20)
+        code, output = _capture(_ax_command(_ax_helper(root)) + ["request-access"], timeout=20)
         if code == 0 and output.strip().startswith("{"):
             try:
                 prompted = bool(json.loads(output).get("trusted"))

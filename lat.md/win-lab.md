@@ -55,8 +55,10 @@ the desktop session, this console's own elevation and one live capture probe.
 ### Agent safety gate
 
 Everything the web endpoints and the MCP server show of this lab passes through
-[[console/winapps_guard.py]], which reads the policy file `win-lab/winapps-policy.json`
-(or `OSLAB_WINAPPS_POLICY`). An agent sees only windows of apps on `allowedApps`; an
+[[console/winapps_guard.py]]; an agent sees only allowlisted apps and nothing sensitive.
+
+The guard reads the policy file `win-lab/winapps-policy.json` (or `OSLAB_WINAPPS_POLICY`).
+An agent sees only windows of apps on `allowedApps`; an
 empty, missing or broken policy means it sees nothing and reports `policyError`.
 Windows that look sensitive (built-in password managers, private or incognito
 browsing, online-banking title hints, plus anything the policy adds) are never

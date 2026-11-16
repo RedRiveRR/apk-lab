@@ -457,7 +457,8 @@ def handle(message: dict) -> dict | None:
     if method == "tools/call":
         params = message.get("params") or {}
         try:
-            raw_args = params.get("args")
+            # MCP clients send the tool arguments as `arguments`; `args` is kept for older callers.
+            raw_args = params["arguments"] if "arguments" in params else params.get("args")
             # The Windows tools validate their arguments themselves, so a falsey non-object such as
             # [] or 0 is refused instead of silently becoming {}; only a missing value means none.
             args = {} if raw_args is None else raw_args

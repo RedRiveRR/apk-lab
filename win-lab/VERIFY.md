@@ -1,6 +1,6 @@
 # Windows Apps Lab native app mirror — verification
 
-Date: 2026-11-16 (revision of the 2026-11-15 run)
+Date: 2026-11-16 (revision of the 2026-11-15 run; re-verified after merging current `origin/master`)
 Host: Microsoft Windows 11 Pro, 10.0.26300, x64
 Shell: Windows PowerShell 5.1.26100.9818
 Node.js: v24.20.0
@@ -95,16 +95,25 @@ From `dashboard/`:
 
 ```powershell
 npm run check          # tsc --noEmit: passed
-npm run test:i18n      # 2509 keys match across 7 locales; no new untranslated TSX strings.
-npm run build          # 514 page(s) built
+npm run test:i18n      # 2737 keys match across 7 locales; no new untranslated TSX strings.
+npm run build          # 532 page(s) built
 npx playwright test winapps.spec.ts   # 4 passed
-npx playwright test                   # 65 passed, 1 failed, 1 skipped
+npx playwright test                   # 65 passed, 6 failed, 1 skipped
 ```
 
-The one failure is `how-to-use.spec.ts` "Workspace prompt includes task…". On
-this host `core.autocrlf=true` checks sources out as CRLF while a `<textarea>`
-value is LF-normalized, so the compared prompts differ in line endings only. It
-is unrelated to this change; it was not re-run on `master`.
+Six tests fail, none of them in `winapps.spec.ts`, and none are caused by this
+change:
+
+- Five in `health-and-content.spec.ts` (firewall dialog focus, two clipboard
+  tests, 44px coarse-pointer targets, the macOS app-mirror click preview) fail the
+  same way on a pristine `origin/master` copy on this host. That copy needed one
+  edit to run at all: its `playwright.config.ts` starts the static server with
+  `python3`, which does not exist on Windows (this change makes it `python` on
+  Windows).
+- `how-to-use.spec.ts` "Workspace prompt includes task…": this host has
+  `core.autocrlf=true`, so sources are CRLF while a `<textarea>` value is
+  LF-normalized and the compared prompts differ in line endings only. The same
+  test passes on the LF `git archive` copy of `master`.
 
 `winapps.spec.ts` checks: the mirror is painted (visible, non-zero, 4:3 for a
 320 × 240 window); the selected window and size are shown; an elevated window is
@@ -115,7 +124,7 @@ Public-Pages mounting is gated in code by `PUBLIC_SITE_MODE !== "pages"` and is
 
 ## 6. Desktop runtime integrity
 
-From `app/`: `npm run test:stage` → 8 tests, 0 failed. `console/winapps.py` is
+From `app/`: `npm run test:stage` → 9 tests, 0 failed. `console/winapps.py` is
 in both the staging and bundle integrity lists. `cargo test` was not re-run for
 this revision (no Rust change since the previous run).
 

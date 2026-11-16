@@ -338,3 +338,12 @@ def test_every_refusal_and_every_agent_call_is_audited_but_human_success_is_not(
     refusal = rows()[-1]
     assert (refusal["app"], refusal["windowId"], refusal["code"]) == ("1Password", 3, "RESTRICTED_WINDOW")
     assert "Vault" not in json.dumps(rows())
+
+
+def test_web_ui_and_mcp_never_call_the_raw_screenshot_directly():
+    """Every caller goes through the guard, so a new endpoint cannot bypass the policy by accident."""
+    console = os.path.join(os.path.dirname(__file__), "..", "..", "..", "console")
+    sources = [os.path.join(os.path.dirname(__file__), "..", "web_ui.py"), os.path.join(console, "mcp_server.py")]
+    for path in sources:
+        with open(path, encoding="utf-8") as f:
+            assert "winapps.winapps_window_screenshot" not in f.read(), path

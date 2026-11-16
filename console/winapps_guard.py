@@ -16,6 +16,8 @@ import time
 import unicodedata
 from dataclasses import dataclass
 
+import winapps
+
 POLICY_ENV = "OSLAB_WINAPPS_POLICY"
 POLICY_KEYS = ("allowedApps", "restrictedApps", "restrictedTitles")
 
@@ -198,3 +200,115 @@ def audit_rows(limit: int = 200) -> dict:
     """The newest rows for the panel and the MCP audit tool."""
     with _AUDIT_LOCK:
         return {"recording": True, "rows": [dict(row) for row in _AUDIT[-max(0, limit):]]}
+
+
+# ── Guarded facade: the only way web_ui and the MCP server reach the collector ─────────────────
+
+_MAX_HWND = 0xFFFFFFFF
+
+
+def _window_id(value: object) -> int:
+    """A usable window id, or INVALID_WINDOW. Only real integers and ASCII digit strings qualify."""
+    if isinstance(value, bool):
+        number = None
+    elif isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and value.isascii() and value.isdigit():
+        number = int(value)
+    else:
+        number = None
+    if number is None or not 0 < number <= _MAX_HWND:
+        raise GuardError("Invalid window id", "INVALID_WINDOW")
+    return number
+
+
+def _refuse(root: str, audience: str, tool: str | None, window: dict | None, window_id: int | None,
+            code: str, message: str, retry: str = "never") -> GuardError:
+    audit(root, "refused", audience=audience, app=(window or {}).get("app"), window_id=window_id,
+          code=code, tool=tool)
+    return GuardError(message, code, retry)
+
+
+def _check(root: str, audience: str, tool: str | None, window: dict, window_id: int, policy: Policy) -> None:
+    verdict = classify(window, policy)
+    if verdict.restricted:
+        raise _refuse(root, audience, tool, window, window_id, "RESTRICTED_WINDOW",
+                      "That window is restricted and cannot be mirrored")
+    if audience == "agent" and not verdict.allowed:
+        raise _refuse(root, audience, tool, window, window_id, "APP_NOT_ALLOWED",
+                      "That app is not on this lab's agent allowlist (win-lab/winapps-policy.json)")
+
+
+def list_windows(root: str, audience: str, *, tool: str | None = None) -> dict:
+    """The window inventory as `audience` ("human" or "agent") may see it.
+
+    An agent gets only allowlisted, unrestricted windows and a count of how many were withheld. A
+    person gets every window, with restricted ones flagged and their titles replaced.
+    """
+    result = winapps.winapps_windows()
+    if audience == "agent":
+        audit(root, "list", audience=audience, tool=tool)
+    if not result.get("available"):
+        return {**result, "withheld": 0} if audience == "agent" else result
+    policy = load_policy(root)
+    shown: list[dict] = []
+    withheld = 0
+    for window in result["windows"]:
+        verdict = classify(window, policy)
+        if audience == "agent":
+            if verdict.allowed:
+                shown.append(window)
+            else:
+                withheld += 1
+        elif verdict.restricted:
+            shown.append({**window, "title": "(restricted)", "restricted": True, "reason": verdict.reason})
+        else:
+            shown.append({**window, "restricted": False, "reason": None})
+    reply = {**result, "windows": shown}
+    if audience == "agent":
+        reply["withheld"] = withheld
+    return reply
+
+
+def screenshot(root: str, window_id: object, audience: str, *, tool: str | None = None) -> bytes:
+    """A PNG of one window, only if it passes the policy before and after the capture."""
+    if winapps.sys.platform != "win32":
+        raise GuardError("The Windows app mirror needs a Windows host", "NOT_SUPPORTED")
+    try:
+        hwnd = _window_id(window_id)
+    except GuardError as error:
+        raise _refuse(root, audience, tool, None, None, error.code, str(error)) from None
+    policy = load_policy(root)
+    window = winapps.window_info(hwnd)
+    if window is None:
+        raise _refuse(root, audience, tool, None, hwnd, "WINDOW_GONE",
+                      "That window is not on screen anymore; refresh the mirror", "retry")
+    _check(root, audience, tool, window, hwnd, policy)
+    try:
+        png = winapps.winapps_window_screenshot(hwnd)
+    except winapps.WinAppError as error:
+        retry = "never" if error.code == "INVALID_WINDOW" else "retry"
+        raise _refuse(root, audience, tool, window, hwnd, error.code, str(error), retry) from None
+    # A title can change while the capture runs; the pixels are discarded if it became restricted.
+    after = winapps.window_info(hwnd)
+    if after is None:
+        raise _refuse(root, audience, tool, window, hwnd, "WINDOW_GONE",
+                      "That window is not on screen anymore; refresh the mirror", "retry")
+    _check(root, audience, tool, after, hwnd, policy)
+    if audience == "agent":
+        audit(root, "screenshot", audience=audience, app=window.get("app"), window_id=hwnd, tool=tool)
+    return png
+
+
+def doctor(root: str, audience: str = "agent", *, tool: str | None = None) -> dict:
+    """The collector's doctor probe, which never captures a window this audience may not see."""
+    policy = load_policy(root)
+
+    def can_probe(window: dict) -> bool:
+        verdict = classify(window, policy)
+        return not verdict.restricted and (audience != "agent" or verdict.allowed)
+
+    result = winapps.doctor(can_probe=can_probe)
+    if audience == "agent":
+        audit(root, "doctor", audience=audience, tool=tool)
+    return result

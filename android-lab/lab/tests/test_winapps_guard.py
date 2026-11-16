@@ -202,3 +202,139 @@ def test_concurrent_audit_keeps_unique_consecutive_seq(audit_dir):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert sorted(row["seq"] for row in rows()) == list(range(1, 401))
+
+
+# ── Task 3: guarded facade ────────────────────────────────────────────────────
+
+import winapps
+
+PNG = b"\x89PNG\r\n\x1a\nfake"
+WINDOWS = [
+    {"windowId": 1, "app": "Notepad", "title": "notes.txt", "width": 10, "height": 10},
+    {"windowId": 2, "app": "Calc", "title": "Calculator", "width": 10, "height": 10},
+    {"windowId": 3, "app": "1Password", "title": "Vault", "width": 10, "height": 10},
+    {"windowId": 4, "app": "msedge", "title": "News [InPrivate]", "width": 10, "height": 10},
+]
+
+
+@pytest.fixture
+def world(tmp_path, monkeypatch, audit_dir):
+    """A fake desktop: Notepad and 1Password are allowlisted, 1Password and the InPrivate tab restricted."""
+    write_policy(tmp_path, monkeypatch, {"allowedApps": ["Notepad", "1Password"]})
+    state = {"captures": [], "info": lambda hwnd: next((dict(w) for w in WINDOWS if w["windowId"] == hwnd), None)}
+    monkeypatch.setattr(winapps, "winapps_windows",
+                        lambda: {"available": True, "reason": None, "windows": [dict(w) for w in WINDOWS]})
+    monkeypatch.setattr(winapps, "window_info", lambda hwnd: state["info"](hwnd), raising=False)
+    monkeypatch.setattr(winapps, "winapps_window_screenshot", lambda hwnd: state["captures"].append(hwnd) or PNG)
+    monkeypatch.setattr(winapps.sys, "platform", "win32")
+    state["root"] = str(tmp_path)
+    return state
+
+
+def test_agent_list_returns_only_allowlisted_unrestricted_windows_and_a_withheld_count(world):
+    result = guard.list_windows(world["root"], "agent", tool="winapps_apps")
+    assert [w["windowId"] for w in result["windows"]] == [1]
+    assert result["withheld"] == 3 and result["available"] is True
+
+
+def test_agent_list_with_empty_policy_returns_nothing_and_counts_all_as_withheld(world, monkeypatch, tmp_path):
+    monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(tmp_path / "absent.json"))
+    result = guard.list_windows(world["root"], "agent")
+    assert result["windows"] == [] and result["withheld"] == 4
+
+
+def test_human_list_keeps_restricted_windows_but_redacts_title_and_flags_them(world):
+    result = guard.list_windows(world["root"], "human")
+    by_id = {w["windowId"]: w for w in result["windows"]}
+    assert set(by_id) == {1, 2, 3, 4}
+    assert by_id[3]["restricted"] is True and by_id[3]["reason"] == "password-manager"
+    assert by_id[3]["title"] == "(restricted)" and by_id[3]["app"] == "1Password"
+    assert by_id[4]["reason"] == "private-window" and by_id[4]["title"] == "(restricted)"
+    assert by_id[1]["restricted"] is False and by_id[1]["title"] == "notes.txt"
+    assert "withheld" not in result
+
+
+@pytest.mark.parametrize("audience", ["human", "agent"])
+@pytest.mark.parametrize("window_id", [3, 4])
+def test_screenshot_refuses_restricted_windows_for_everyone(world, audience, window_id):
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], window_id, audience)
+    assert refused.value.code == "RESTRICTED_WINDOW" and world["captures"] == []
+
+
+def test_screenshot_refuses_non_allowlisted_apps_for_agents_only(world):
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], 2, "agent")
+    assert refused.value.code == "APP_NOT_ALLOWED"
+    assert guard.screenshot(world["root"], 2, "human") == PNG
+    assert guard.screenshot(world["root"], 1, "agent") == PNG
+
+
+def test_screenshot_discards_pixels_if_the_title_turns_restricted_during_capture(world):
+    calls = []
+
+    def flipping(hwnd):
+        calls.append(hwnd)
+        window = dict(WINDOWS[0])
+        if len(calls) > 1:
+            window["title"] = "notes [InPrivate]"
+        return window
+
+    world["info"] = flipping
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], 1, "agent")
+    assert refused.value.code == "RESTRICTED_WINDOW" and world["captures"] == [1]
+    assert rows()[-1]["kind"] == "refused" and rows()[-1]["code"] == "RESTRICTED_WINDOW"
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, -3, "12abc", 10 ** 30, None, "٣", 0])
+def test_screenshot_rejects_bad_window_ids(world, bad):
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], bad, "agent")
+    assert refused.value.code == "INVALID_WINDOW" and world["captures"] == []
+
+
+def test_gone_window_and_capture_failures_map_to_codes(world, monkeypatch):
+    with pytest.raises(guard.GuardError) as gone:
+        guard.screenshot(world["root"], 99, "human")
+    assert gone.value.code == "WINDOW_GONE" and gone.value.retry == "retry"
+
+    def failing(hwnd):
+        raise winapps.WinAppError("Could not capture that window", "CAPTURE_FAILED")
+
+    monkeypatch.setattr(winapps, "winapps_window_screenshot", failing)
+    with pytest.raises(guard.GuardError) as failed:
+        guard.screenshot(world["root"], 1, "human")
+    assert failed.value.code == "CAPTURE_FAILED"
+
+
+def test_screenshot_on_a_non_windows_host_is_not_supported(world, monkeypatch):
+    monkeypatch.setattr(winapps.sys, "platform", "linux")
+    with pytest.raises(guard.GuardError) as refused:
+        guard.screenshot(world["root"], 1, "human")
+    assert refused.value.code == "NOT_SUPPORTED"
+
+
+def test_doctor_probe_skips_restricted_windows(world, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(winapps, "doctor", lambda can_probe=None: seen.update(probe=can_probe) or {"capture": True},
+                        raising=False)
+    guard.doctor(world["root"], "agent", tool="winapps_doctor")
+    assert [seen["probe"](w) for w in WINDOWS] == [True, False, False, False]
+    guard.doctor(world["root"], "human")
+    assert [seen["probe"](w) for w in WINDOWS] == [True, True, False, False]
+
+
+def test_every_refusal_and_every_agent_call_is_audited_but_human_success_is_not(world):
+    guard.list_windows(world["root"], "human")
+    guard.screenshot(world["root"], 1, "human")
+    assert rows() == []
+    guard.list_windows(world["root"], "agent", tool="winapps_apps")
+    guard.screenshot(world["root"], 1, "agent", tool="winapps_screenshot")
+    with pytest.raises(guard.GuardError):
+        guard.screenshot(world["root"], 3, "human")
+    assert [(r["kind"], r["audience"]) for r in rows()] == [("list", "agent"), ("screenshot", "agent"),
+                                                            ("refused", "human")]
+    refusal = rows()[-1]
+    assert (refusal["app"], refusal["windowId"], refusal["code"]) == ("1Password", 3, "RESTRICTED_WINDOW")
+    assert "Vault" not in json.dumps(rows())

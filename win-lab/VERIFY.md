@@ -119,7 +119,76 @@ From `app/`: `npm run test:stage` → 8 tests, 0 failed. `console/winapps.py` is
 in both the staging and bundle integrity lists. `cargo test` was not re-run for
 this revision (no Rust change since the previous run).
 
-## 7. Scope and limits
+## 7. Agent safety layer (WINMIR-11d, 11f, 06, 12a, 12b)
+
+What was added: `console/winapps_guard.py` (policy, restricted windows, audit and the only door
+the web endpoints and the MCP server use), read-only `winapps_*` MCP tools and a `lab-winapps`
+capabilities entry. Design: `docs/superpowers/specs/2026-11-16-winapps-agent-safety-design.md`.
+
+### Real-host check (Windows 11, standard user)
+
+A script started a real stdio session with `python console/mcp_server.py` against this desktop. It
+owned two windows of its own (`python`, titles `winapps-demo allowed` and
+`winapps-demo [InPrivate]`) and used a temporary policy file allowing only `python`. No other
+application was touched, and other windows' titles were not printed.
+
+Observed:
+
+- `serverInfo.name` was `os-lab-windows`; the winapps tools were `winapps_apps`,
+  `winapps_screenshot`, `winapps_capabilities`, `winapps_doctor`, `winapps_audit`. No arm or input tool.
+- The person's view listed 8 windows. The `[InPrivate]` demo window was flagged
+  `private-window` and its title replaced by `(restricted)`.
+- The agent's `winapps_apps` returned exactly 1 window (`python`) and `withheld: 7`. The restricted
+  window was not in it.
+- `winapps_screenshot` of the allowlisted window returned a PNG (valid signature, 4,694 bytes).
+- The restricted window gave `RESTRICTED_WINDOW`; a window of an app that is not on the allowlist
+  gave `APP_NOT_ALLOWED`; window id `0` gave `INVALID_WINDOW`. All were `isError`.
+- `winapps_doctor`: `desktop=True, elevated=False, capture=True`.
+- The audit held 6 rows (list, screenshot, three refusals, doctor) and the daily JSONL file had 6
+  lines; neither contained a window title.
+
+Not verified on a real host: a real password manager or banking page (the restricted case used a
+title hint on a window this script owned), and an elevated window.
+
+### Tests
+
+```text
+pytest test_winapps.py test_winapps_guard.py test_mcp_winapps.py : 98 passed
+pytest android-lab/lab/tests (whole backend)                     : 561 passed, 9 failed, 17 skipped
+app: npm run test:stage                                          : 9 passed
+dashboard: tsc, test:i18n (2767 keys, 7 locales), build (532 pages)
+playwright winapps.spec.ts                                       : 5 passed
+playwright (full suite)                                          : 70 passed, 23 failed, 1 skipped
+```
+
+The 9 backend failures are macOS tool-chain, APK patcher, cleanup and `lab_start` tests that do not
+involve this lab. Before this change the same host showed 12; three of those were caused by the
+Windows Apps Lab itself (the capability catalog had no `lab-winapps` item, and two lab-state tests
+did not expect `winapps` to be unavailable on Linux and macOS hosts) and are fixed here.
+
+The 23 Playwright failures are all in `health-and-content.spec.ts` and `how-to-use.spec.ts`. The same
+suite run on an unmodified copy of this branch's base commit fails 23 as well (21 identical tests; two
+differ in opposite directions because this host checks files out as CRLF while the copy is LF). No
+failure is in `winapps.spec.ts`.
+
+Not run: `cargo test` for the runtime bundle list (only the staging test ran), and `lat check` (the
+CLI is not installed on this host).
+
+### Limits of this layer
+
+- The allowlist binds the MCP path. The local HTTP address serves the person's panel, so an agent
+  that can run commands on this machine can still request unrestricted windows there. This guards
+  against agent mistakes, not a hostile local user; a secret the agent does not hold on that address
+  is a later phase.
+- The restricted-window filter reads process names and titles only. A banking page titled
+  "Welcome" is not caught unless a hint is added to the policy file.
+- A title can change during a capture; the pixels are discarded if it became restricted, but a
+  window that changes right after the check is still seen.
+- In a packaged install the lab folder may be read-only: point `OSLAB_WINAPPS_POLICY` and
+  `OSLAB_WINAPPS_AUDIT_DIR` at writable paths, or the audit stays in memory.
+- The capabilities entry's new English text is not yet translated into the 7 locales.
+
+## 8. Scope and limits
 
 - This proves the read-only phase: window inventory, window capture and a
   doctor probe. UIA hotspots, previewed clicks, typing and armed control are

@@ -50,6 +50,28 @@ window a standard-user console cannot capture is marked rather than hidden.
 `GET /api/labs/winapps/doctor` and `python console/winapps.py --doctor` report
 the desktop session, this console's own elevation and one live capture probe.
 
+### Agent safety gate
+
+Everything the web endpoints and the MCP server show of this lab passes through
+[[console/winapps_guard.py]], which reads the policy file `win-lab/winapps-policy.json`
+(or `OSLAB_WINAPPS_POLICY`). An agent sees only windows of apps on `allowedApps`; an
+empty, missing or broken policy means it sees nothing and reports `policyError`.
+Windows that look sensitive (built-in password managers, private or incognito
+browsing, online-banking title hints, plus anything the policy adds) are never
+captured for anyone and are marked restricted in the panel. Restricted beats the
+allowlist, and the built-in restrictions cannot be removed. A capture is checked
+before and after the pixels are taken, because a title can change meanwhile.
+
+Every agent call and every refusal is audited without titles or images, in memory
+and in a daily JSONL file; identical rows within a minute are counted, not repeated.
+The MCP server adds read-only `winapps_*` tools on Windows and no arm or input tool.
+
+Honest limits: the filter reads process names and titles only, so it is a
+heuristic. The allowlist binds the MCP path; the local HTTP address serves the
+human panel, so an agent that can run commands on this machine can still request
+unrestricted windows there. It guards against agent mistakes, not a hostile local
+user; a secret the agent does not hold on that address is a later phase.
+
 ## Research
 
 Windows-lab research and the command reference.

@@ -33,6 +33,8 @@ def states(host):
 def test_linux_kvm_host_runs_container_labs_but_not_native_mac():
     expected = {
         "android": "ready", "windows": "ready", "linux": "ready", "ios": "ready", "macos": "unavailable", "source": "ready",
+        # The Windows Apps Lab reads this host's desktop, so it needs a Windows host.
+        "winapps": "unavailable",
         # Web Lab follows the local engine build, not a VM provider: ready once
         # the engine binary exists, otherwise unavailable without cargo.
         "web": "ready" if os.path.isfile(os.path.join(REPO_ROOT, "web-lab", "browser", "target", "release", "weblab")) else "unavailable",
@@ -122,9 +124,9 @@ def test_only_unsupported_labs_are_unavailable_across_hosts():
     # on every host until the engine binary exists (as in the linux-kvm test).
     web_engine = os.path.isfile(os.path.join(REPO_ROOT, "web-lab", "browser", "target", "release", "weblab"))
     expected = {
-        "linux": {"macos"} | (set() if web_engine else {"web"}),
+        "linux": {"macos", "winapps"} | (set() if web_engine else {"web"}),
         "windows": {"macos"} | (set() if web_engine else {"web"}),
-        "macos": {"windows", "linux"} | (set() if web_engine else {"web"}),
+        "macos": {"windows", "linux", "winapps"} | (set() if web_engine else {"web"}),
     }
     for os_name, unavailable in expected.items():
         host = make_host(os_name=os_name, kvm=os_name == "linux", distros=("Ubuntu",) if os_name == "windows" else ())
@@ -143,6 +145,14 @@ def test_capability_catalog_uses_lab_provider_rules():
         for platform in ("macos", "windows", "linux"):
             provider = oslab.provider_for(lab, platform)
             assert (item["support"][platform]["level"] == "none") == (provider is None)
+
+
+def test_capabilities_include_the_windows_apps_lab():
+    items = {item["id"]: item for group in oslab.capability_catalog()["groups"] for item in group["items"]}
+    support = items["lab-winapps"]["support"]
+    assert items["lab-winapps"]["lab"] == "winapps"
+    assert support["windows"]["level"] == "full"
+    assert support["macos"]["level"] == "none" and support["linux"]["level"] == "none"
 
 
 def test_job_failure_before_process_start_is_reported(monkeypatch):

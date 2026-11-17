@@ -5,7 +5,7 @@
 | Student | Ada Mert Kızılırmak (2520191019) · [@RedRiveRR](https://github.com/RedRiveRR) |
 | Course | MYO062 — midterm |
 | Task | PENT-09, reserved in [#124](https://github.com/keyvanarasteh/os-lab/pull/124) |
-| Code | [`console/frida_inventory.py`](../../frida_inventory.py) · endpoint in [`android-lab/lab/web_ui.py`](../../../android-lab/lab/web_ui.py) · card in [`dashboard/src/views/frida-targets-card.tsx`](../../../dashboard/src/views/frida-targets-card.tsx) |
+| Code | [`console/frida_inventory.py`](../../../console/frida_inventory.py) · endpoint in [`android-lab/lab/web_ui.py`](../../../android-lab/lab/web_ui.py) · card in [`dashboard/src/views/frida-targets-card.tsx`](../../../dashboard/src/views/frida-targets-card.tsx) |
 | Tests | [`test_frida_inventory.py`](../../../android-lab/lab/tests/test_frida_inventory.py) (53 tests) · [`test_web_ui.py`](../../../android-lab/lab/tests/test_web_ui.py) (2 tests) · [`health-and-content.spec.ts`](../../../dashboard/e2e/health-and-content.spec.ts) (1 browser test) |
 | Verification | [`VERIFY.md`](VERIFY.md) |
 | Proof video | [PENT-09-kanit-videosu-v2.mp4](https://drive.google.com/file/d/1s9lyTXlMTMKjIaj3FSG_uZ0PMz5xnqpr/view?usp=sharing) (3:43) |

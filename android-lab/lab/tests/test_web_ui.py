@@ -275,3 +275,31 @@ def test_app_update_status_is_reported_without_network(web_server):
     assert "supported" in data and "updateAvailable" in data
     assert data["install"] is None
 
+
+def test_winapps_input_gate_endpoints_need_the_header_and_map_refusals(web_server, monkeypatch):
+    import web_ui
+
+    gate = web_ui.winapps_input_gate
+    gate._reset()
+    try:
+        state = json.loads(urllib.request.urlopen(f"{web_server}/api/labs/winapps/input").read().decode("utf-8"))
+        assert state["armed"] is False
+        arm = f"{web_server}/api/labs/winapps/input/arm"
+        assert _post(arm, {"owner": "panel-1"}, {})[0] == 403
+        status, data = _post(arm, {"owner": "panel-1"}, {"X-OSLab": "1"})
+        assert status == 200 and data["armed"] is True and data["owner"] == "panel-1"
+        status, data = _post(arm, {"owner": "agent-9"}, {"X-OSLab": "1"})
+        assert (status, data["code"]) == (409, "INPUT_BUSY")
+        status, data = _post(arm, {"owner": ""}, {"X-OSLab": "1"})
+        assert (status, data["code"]) == (400, "INVALID_ARGS")
+        status, data = _post(f"{web_server}/api/labs/winapps/input/disarm", {"owner": "agent-9"}, {"X-OSLab": "1"})
+        assert (status, data["code"]) == (409, "INPUT_BUSY")
+        status, data = _post(f"{web_server}/api/labs/winapps/input/panic", {}, {"X-OSLab": "1"})
+        assert status == 200 and data["armed"] is False and data["epoch"] == 1
+    finally:
+        gate._reset()
+
+    monkeypatch.setattr(web_ui, "winapps_input_gate", None)
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(f"{web_server}/api/labs/winapps/input")
+    assert caught.value.code == 501

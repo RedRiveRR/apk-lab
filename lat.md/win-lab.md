@@ -77,11 +77,27 @@ consecutive rows within a minute are counted, not repeated. The agent's own view
 the audit hides other audiences' rows and the app name of any refusal.
 The MCP server adds read-only `winapps_*` tools on Windows and no arm or input tool.
 
+### Input gate
+
+[[console/winapps_input_gate.py]] is the single door any future input (`SendInput`) must
+pass; it authorizes one action and never sends input itself. It covers #288's
+WINMIR-11a to 11e: arming has exactly one owner and expires on its own (5 s to 5 min,
+60 s by default), a panic stop disarms at once and bumps an epoch that streams can
+watch, a locked screen or secure prompt refuses input, the app allowlist is
+default-deny for input even for a person (an empty policy refuses everything), and
+submit-class input (a paste or Enter) needs an explicit `confirm: true` even while armed.
+The window is read again at the moment of the action, restricted windows stay
+refused, and every refusal and every authorization is audited without titles or the
+owner's name. `GET /api/labs/winapps/input` shows the state; `POST .../input/arm`,
+`.../disarm` and `.../panic` need the `X-OSLab` header. There is no arm tool on MCP, and
+`winapps_capabilities` reports the gate without its owner.
+
 Honest limits: the filter reads process names and titles only, so it is a
 heuristic. The allowlist binds the MCP path; the local HTTP address serves the
 human panel, so an agent that can run commands on this machine can still request
 unrestricted windows there. It guards against agent mistakes, not a hostile local
-user; a secret the agent does not hold on that address is a later phase.
+user; a secret the agent does not hold on that address is a later phase. For the
+same reason a local process that sets the header can arm the input gate over HTTP.
 
 The audit trail is per process: the HTTP console and each MCP server keep their own
 in-memory rows and `seq` numbers, all appending to the same daily file, and the file

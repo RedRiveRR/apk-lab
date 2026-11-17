@@ -100,7 +100,8 @@ def test_winapps_capabilities_reports_policy_summary_and_input_unsupported(on_wi
     monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(policy))
     result = call("winapps_capabilities")
     assert payload(result) == {"allowedApps": 2, "restrictedApps": 1, "restrictedTitles": 0, "policyError": None,
-                               "exists": True, "audience": "agent", "inputSupported": False}
+                               "exists": True, "audience": "agent", "inputSupported": False,
+                               "inputGate": {"armed": False, "expiresInSec": 0, "epoch": 0}}
     assert "Notepad" not in result["content"][0]["text"]
 
 
@@ -203,3 +204,19 @@ def test_macos_tools_also_read_the_spec_key(monkeypatch):
                         lambda root, window_id, query: seen.update(w=window_id, q=query) or {"count": 0, "hits": []})
     result = rpc("tools/call", {"name": "macos_search", "arguments": {"windowId": 3, "query": "Save"}})
     assert result["isError"] is False and seen == {"w": 3, "q": "Save"}
+
+
+def test_capabilities_report_the_input_gate_without_naming_its_owner(on_windows, monkeypatch, tmp_path):
+    import winapps_input_gate as gate
+
+    monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(tmp_path / "absent.json"))
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
+    gate._reset()
+    gate.arm(str(tmp_path), "secret-owner", 30)
+    try:
+        result = payload(call("winapps_capabilities"))
+        assert result["inputSupported"] is False
+        assert result["inputGate"] == {"armed": True, "expiresInSec": 30, "epoch": 0}
+        assert "secret-owner" not in json.dumps(result)
+    finally:
+        gate._reset()

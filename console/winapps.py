@@ -22,6 +22,7 @@ GA_ROOT = 2
 WS_CAPTION = 0x00C00000
 WS_EX_TOOLWINDOW = 0x00000080
 DWMWA_CLOAKED = 14
+DESKTOP_SWITCHDESKTOP = 0x0100
 TOKEN_QUERY = 0x0008
 TOKEN_ELEVATION = 20  # TOKEN_INFORMATION_CLASS.TokenElevation
 MAX_TITLE_CHARS = 512
@@ -143,6 +144,10 @@ if sys.platform == "win32":
     _kernel32.ProcessIdToSessionId.restype = wintypes.BOOL
     _user32.GetShellWindow.argtypes = []
     _user32.GetShellWindow.restype = wintypes.HWND
+    _user32.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _user32.OpenInputDesktop.restype = wintypes.HANDLE
+    _user32.CloseDesktop.argtypes = [wintypes.HANDLE]
+    _user32.CloseDesktop.restype = wintypes.BOOL
 
     _dwmapi.DwmGetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
     _dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long  # HRESULT
@@ -341,6 +346,21 @@ def window_info(window_id: int) -> dict[str, Any] | None:
     if isinstance(window_id, bool) or not isinstance(window_id, int) or not 0 < window_id <= 0xFFFFFFFF:
         return None
     return _window(window_id) if _user32.GetAncestor(window_id, GA_ROOT) == window_id else None
+
+
+def desktop_locked() -> bool | None:
+    """True when this process cannot open the input desktop, i.e. the lock screen or a UAC prompt is up.
+
+    A process that is not allowed to ask also gets True, which is the safe answer for an input gate.
+    None means this is not a Windows host.
+    """
+    if sys.platform != "win32" or _user32 is None:
+        return None
+    desktop = _user32.OpenInputDesktop(0, False, DESKTOP_SWITCHDESKTOP)
+    if not desktop:
+        return True
+    _user32.CloseDesktop(desktop)
+    return False
 
 
 def winapps_window_screenshot(window_id: int) -> bytes:

@@ -270,6 +270,16 @@ def _audience(value: object) -> None:
         raise GuardError("Unknown audience", "INVALID_AUDIENCE")
 
 
+def require_audience(value: object) -> None:
+    """Public form of the audience check for sibling modules such as the input gate."""
+    _audience(value)
+
+
+def parse_window_id(value: object) -> int:
+    """Public form of the window id check: a GuardError(INVALID_WINDOW) unless it is a plausible HWND."""
+    return _window_id(value)
+
+
 def _window_id(value: object) -> int:
     """A usable window id, or INVALID_WINDOW. Only real integers and ASCII digit strings qualify."""
     if isinstance(value, bool):

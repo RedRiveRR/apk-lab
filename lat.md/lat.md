@@ -15,6 +15,7 @@ This is the main project documentation; start here when changing behavior.
 - [[source-tests]] — retained engine contracts and distribution regressions
 - [[cleanup-lab]] — disk cleanup: readiness, catalog, scan jobs, guarded cleaning
 - [[web-lab]] — embedded in-app browser with JavaScript injection
+- [[web-sec]] — scope-guarded web posture assessment (engine-only)
 - [[labctl]] — the cross-lab management CLI
 - [[setup]] — one-command installers for Linux, macOS and Windows
 - [[dashboard]] — the browser console: host overview, every lab, Android workbench

@@ -584,6 +584,7 @@ export default function WebSecLabPage() {
 
             <details className="mt-4 text-sm">
               <summary className="cursor-pointer text-(--iux-muted-foreground)">Checks</summary>
+              <div className="mt-2 overflow-x-auto">
               <table className="mt-2 w-full text-left text-xs">
                 <thead>
                   <tr className="text-(--iux-muted-foreground)">
@@ -633,6 +634,7 @@ export default function WebSecLabPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </details>
           </Section>
         ) : null}
@@ -720,7 +722,8 @@ export default function WebSecLabPage() {
           ) : null}
           {bulkJob?.state === "error" ? <p role="alert" className="mt-3 text-sm text-(--iux-danger)">The scan failed. {bulkJob.error}</p> : null}
           {bulkJob?.state === "done" && bulkJob.results ? (
-            <table className="mt-3 w-full text-left text-sm">
+            <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-xs text-(--iux-muted-foreground)">
                   <th className="py-1">Target</th>
@@ -742,6 +745,7 @@ export default function WebSecLabPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           ) : null}
         </Section>
 

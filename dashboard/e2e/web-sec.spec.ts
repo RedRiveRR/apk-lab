@@ -276,3 +276,24 @@ test("a history row opens the stored report in the workbench", async ({ page }) 
   await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
 });
+
+test("the workbench holds 390 px without horizontal overflow", async ({ page }) => {
+  await mockStatus(page, status);
+  let polls = 0;
+  await page.route(/\/api\/websec\/scans$/, (route) => route.fulfill({ status: 202, json: job("running") }));
+  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
+    polls += 1;
+    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report: reportWithModuleData }) });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  await page.getByRole("main").getByRole("button", { name: "Domain information" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Security posture" }).click();
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});

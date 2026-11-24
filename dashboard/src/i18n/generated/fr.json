@@ -3031,5 +3031,8 @@
   "Confirm the active scan": "Confirmer l'analyse active",
   "The scan would run these checks actively:": "L'analyse exécuterait ces contrôles activement :",
   "Run with intrusive checks": "Exécuter avec contrôles intrusifs",
-  "Scan passively": "Analyse passive"
+  "Scan passively": "Analyse passive",
+  "Bulk validation": "Validation en masse",
+  "Targets file": "Fichier de cibles",
+  "Score": "Score"
 }

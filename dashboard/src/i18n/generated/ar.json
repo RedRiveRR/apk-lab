@@ -3031,5 +3031,8 @@
   "Confirm the active scan": "تأكيد الفحص النشط",
   "The scan would run these checks actively:": "سيُشغّل الفحص هذه الاختبارات بشكل نشط:",
   "Run with intrusive checks": "تشغيل مع الفحوصات التدخلية",
-  "Scan passively": "فحص سلبي"
+  "Scan passively": "فحص سلبي",
+  "Bulk validation": "التحقق الجماعي",
+  "Targets file": "ملف الأهداف",
+  "Score": "النقاط"
 }

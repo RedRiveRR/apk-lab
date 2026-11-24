@@ -13,6 +13,7 @@ import { AppShell } from "../../shell/app-shell";
 import { Badge, CopyButton, Empty, Modal, PageHead, Section } from "../../components/ui";
 import {
   api,
+  type WebSecBulkJob,
   type WebSecFinding,
   type WebSecJob,
   type WebSecModule,
@@ -40,6 +41,7 @@ const EXPORT_MIME: Record<string, string> = {
   markdown: "text/markdown"
 };
 const EXPORT_EXTENSION: Record<string, string> = { json: "json", sarif: "sarif", html: "html", markdown: "md" };
+const BULK_MAX = 20; // matches console/websec_api.py MAX_BULK
 
 function gradeClass(grade: string): string {
   if (grade.startsWith("A")) return "text-(--iux-success)";
@@ -117,6 +119,11 @@ export default function WebSecLabPage() {
   const [openModules, setOpenModules] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bulkTargets, setBulkTargets] = useState<string[]>([]);
+  const [bulkPreset, setBulkPreset] = useState("quick");
+  const [bulkJobId, setBulkJobId] = useState("");
+  const [bulkJob, setBulkJob] = useState<WebSecBulkJob | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const report = job?.state === "done" ? job.report : undefined;
   const running = job?.state === "running";
@@ -168,6 +175,33 @@ export default function WebSecLabPage() {
       window.clearInterval(timer);
     };
   }, [jobId]);
+
+  useEffect(() => {
+    if (!bulkJobId) return;
+    let cancelled = false;
+    let timer = 0;
+    const tick = () => {
+      api.websecBulkJob(bulkJobId).then((value) => {
+        if (cancelled) return;
+        setBulkJob(value);
+        if (value.state !== "running") {
+          window.clearInterval(timer);
+          setBulkBusy(false);
+        }
+      }).catch((reason) => {
+        if (cancelled) return;
+        window.clearInterval(timer);
+        setError(errorText(reason));
+        setBulkBusy(false);
+      });
+    };
+    tick();
+    timer = window.setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [bulkJobId]);
 
   useEffect(() => {
     const current = (job?.target || target).trim();
@@ -238,6 +272,32 @@ export default function WebSecLabPage() {
       setError(errorText(reason));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const parseBulkFile = (file: File) => {
+    file.text().then((text) => {
+      const targets: string[] = [];
+      for (const line of text.split(/\r?\n/)) {
+        const candidate = line.split(",")[0].trim();
+        if (!candidate || candidate.startsWith("#")) continue;
+        if (!targets.includes(candidate)) targets.push(candidate);
+        if (targets.length >= BULK_MAX) break;
+      }
+      setBulkTargets(targets);
+    }).catch(() => setError("The targets file could not be read."));
+  };
+
+  const startBulk = async () => {
+    setError("");
+    setBulkBusy(true);
+    try {
+      const created = await api.websecBulkStart({ targets: bulkTargets, preset: bulkPreset });
+      setBulkJob(created);
+      setBulkJobId(created.id);
+    } catch (reason) {
+      setError(errorText(reason));
+      setBulkBusy(false);
     }
   };
 
@@ -555,6 +615,75 @@ export default function WebSecLabPage() {
                 {viewer.content}
               </pre>
             </div>
+          ) : null}
+        </Section>
+
+        <Section title="Bulk validation" description={bulkTargets.length ? `${bulkTargets.length} targets ready` : "One target per line, up to 20"}>
+          <div className="flex flex-wrap items-end gap-3 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-(--iux-muted-foreground)">Targets file</span>
+              <input
+                type="file"
+                accept=".txt,.csv,text/plain,text/csv"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) parseBulkFile(file);
+                  event.target.value = "";
+                }}
+                className="rounded border border-(--iux-border) bg-(--iux-bg) px-2 py-1.5"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-(--iux-muted-foreground)">Preset</span>
+              <select
+                value={bulkPreset}
+                onChange={(event) => setBulkPreset(event.target.value)}
+                className="rounded border border-(--iux-border) bg-(--iux-bg) px-2 py-1.5"
+              >
+                <option value="quick">Quick</option>
+                <option value="standard">Standard</option>
+                <option value="full">Full</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={startBulk}
+              disabled={!ready || bulkBusy || !bulkTargets.length}
+              className="inline-flex items-center gap-2 rounded bg-[#f36c21] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Validate
+            </button>
+          </div>
+
+          {bulkJob?.state === "running" ? (
+            <p aria-live="polite" className="mt-3 text-sm text-(--iux-muted-foreground)">
+              {`Scanning ${bulkJob.results?.count ?? bulkTargets.length} targets…`}
+            </p>
+          ) : null}
+          {bulkJob?.state === "error" ? <p role="alert" className="mt-3 text-sm text-(--iux-danger)">The scan failed. {bulkJob.error}</p> : null}
+          {bulkJob?.state === "done" && bulkJob.results ? (
+            <table className="mt-3 w-full text-left text-sm">
+              <thead>
+                <tr className="text-xs text-(--iux-muted-foreground)">
+                  <th className="py-1">Target</th>
+                  <th>Grade</th>
+                  <th>Score</th>
+                  <th>Findings</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulkJob.results.targets.map((entry, index) => (
+                  <tr key={`${entry.target}-${index}`} className="border-t border-(--iux-border)">
+                    <td className="py-1">{entry.target}</td>
+                    <td className={entry.grade ? gradeClass(entry.grade) : ""}>{entry.grade || "—"}</td>
+                    <td>{entry.grade ? entry.score : "—"}</td>
+                    <td>{entry.grade ? (entry.summary?.total ?? 0) : "—"}</td>
+                    <td className="text-xs text-(--iux-muted-foreground)">{entry.error}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : null}
         </Section>
 

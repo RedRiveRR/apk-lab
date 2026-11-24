@@ -145,3 +145,41 @@ def test_oslab_dispatches_readiness_and_plans(monkeypatch):
             "runtime": False, "kvm": {"usable": False}}
     assert oslab.lab_status("websec", host)["state"] == "ready"
     assert oslab.plan(str(ROOT), {"lab": "websec", "action": "status"}, host)["action"] == "status"
+
+
+def test_api_validates_a_bulk_payload(tmp_path):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    options = api._validate_bulk({"targets": ["Example.test", "example.test", "other.test"],
+                                  "preset": "quick"})
+    assert options["targets"] == ["example.test", "other.test"]
+    assert options["preset"] == "quick"
+    with pytest.raises(websec_api.WebSecError):
+        api._validate_bulk({"targets": []})
+    with pytest.raises(websec_api.WebSecError):
+        api._validate_bulk({"targets": ["-oops"]})
+    with pytest.raises(websec_api.WebSecError):
+        api._validate_bulk({"targets": ["example.test"], "preset": "everything"})
+    with pytest.raises(websec_api.WebSecError):
+        api._validate_bulk({"targets": ["example.test"], "extra": True})
+    with pytest.raises(websec_api.WebSecError):
+        api._validate_bulk({"targets": ["example.test"] * (websec_api.MAX_BULK + 1)})
+
+
+def test_start_bulk_shares_the_one_running_job_slot(tmp_path):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    api.jobs["running"] = {"id": "running", "state": "running", "target": "example.test",
+                           "preset": "quick", "started": 0.0, "process": None}
+    with pytest.raises(websec_api.WebSecError) as conflict:
+        api.start_bulk({"targets": ["example.test"]})
+    assert conflict.value.status == 409
+
+
+def test_job_view_distinguishes_bulk_results_from_scan_reports(tmp_path):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    api.jobs["b1"] = {"id": "b1", "state": "done", "kind": "bulk", "target": "",
+                      "preset": "quick", "active": False, "started": 0.0, "process": None,
+                      "results": {"targets": [], "count": 0}}
+    view = api.job("b1")
+    assert view["kind"] == "bulk"
+    assert "results" in view
+    assert "report" not in view

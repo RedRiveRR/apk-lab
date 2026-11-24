@@ -784,6 +784,15 @@ export interface WebSecHistoryEntry {
   summary: Record<string, number>; preset: string; active: boolean; refused: boolean;
 }
 export interface WebSecReportFile { name: string; bytes: number; modified: number }
+export interface WebSecBulkTarget {
+  target: string; score?: number; grade?: string;
+  summary?: Record<string, number>; error: string;
+}
+export interface WebSecBulkJob {
+  id: string; state: "running" | "done" | "error" | "cancelled";
+  kind?: "scan" | "bulk"; target: string; preset: string; active: boolean; started: number;
+  results?: { targets: WebSecBulkTarget[]; count: number }; error?: string;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -1027,6 +1036,9 @@ export const api = {
     post<WebSecJob>("/api/websec/scans", request),
   websecJob: (id: string) => call<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
   websecCancel: (id: string) => del<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecBulkStart: (request: { targets: string[]; preset?: string }) =>
+    post<WebSecBulkJob>("/api/websec/bulk", request),
+  websecBulkJob: (id: string) => call<WebSecBulkJob>(`/api/websec/bulk/${encodeURIComponent(id)}`),
   websecHistory: (target?: string) =>
     call<{ entries: WebSecHistoryEntry[] }>(`/api/websec/history?limit=20${target ? `&target=${encodeURIComponent(target)}` : ""}`),
   websecReports: (target: string) =>

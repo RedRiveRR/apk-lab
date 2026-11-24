@@ -214,3 +214,45 @@ test("stored reports download in every format with the right file name", async (
   await page.getByRole("main").getByRole("button", { name: "Open" }).click();
   await expect(page.getByRole("main").getByText("content-markdown")).toBeVisible();
 });
+
+test("a bulk job renders a grade per target and a refusal row", async ({ page }) => {
+  await mockStatus(page, status);
+  let sent: Record<string, unknown> | null = null;
+  await page.route("**/api/websec/bulk", async (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 202, json: {
+      id: "bulk-1", state: "running", kind: "bulk", target: "", preset: "quick", active: false, started: 1
+    } });
+  });
+  let polls = 0;
+  const bulkDone = {
+    id: "bulk-1", state: "done", kind: "bulk", target: "", preset: "quick", active: false, started: 1,
+    results: {
+      count: 4,
+      targets: [
+        { target: "one.test", grade: "A", score: 96, summary: { total: 1 }, error: "" },
+        { target: "two.test", grade: "B", score: 84, summary: { total: 2 }, error: "" },
+        { target: "three.test", grade: "C", score: 72, summary: { total: 3 }, error: "" },
+        { target: "outside.test", grade: "", score: 0, summary: {}, error: "the target is outside the declared scope" }
+      ]
+    }
+  };
+  await page.route(/\/api\/websec\/bulk\/bulk-1$/, (route) => {
+    polls += 1;
+    return route.fulfill({ json: polls < 2 ? { ...bulkDone, state: "running", results: undefined } : bulkDone });
+  });
+
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByLabel("Targets file").setInputFiles({
+    name: "targets.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("# owned hosts\none.test\ntwo.test, comment\nthree.test\noutside.test\n")
+  });
+  await page.getByRole("main").getByRole("button", { name: "Validate" }).click();
+
+  await expect(page.getByRole("main").getByText("one.test")).toBeVisible();
+  await expect(page.getByRole("main").getByText("outside.test")).toBeVisible();
+  await expect(page.getByRole("main").getByText("the target is outside the declared scope")).toBeVisible();
+  await expect(page.getByRole("main").getByText("three.test")).toBeVisible();
+  expect(sent).toMatchObject({ targets: ["one.test", "two.test", "three.test", "outside.test"], preset: "quick" });
+});

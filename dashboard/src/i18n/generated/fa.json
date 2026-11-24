@@ -3031,5 +3031,8 @@
   "Confirm the active scan": "اسکن فعال را تأیید کنید",
   "The scan would run these checks actively:": "اسکن این بررسی‌ها را به‌صورت فعال اجرا می‌کند:",
   "Run with intrusive checks": "با بررسی‌های مهاجم اجرا کن",
-  "Scan passively": "اسکن منفعل"
+  "Scan passively": "اسکن منفعل",
+  "Bulk validation": "اعتبارسنجی گروهی",
+  "Targets file": "پرونده هدف‌ها",
+  "Score": "امتیاز"
 }

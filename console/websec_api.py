@@ -27,6 +27,7 @@ FORMATS = {"json", "sarif", "markdown", "md", "text", "html"}
 PRESETS = {"quick", "standard", "full"}
 PAYLOAD_KEYS = {"target", "preset", "modules", "active", "cveLookup", "scheme"}
 MAX_MODULES = 40
+MAX_BULK = 20
 MAX_JOBS = 20
 MAX_OUTPUT = 4 * 1024 * 1024
 MAX_BODY = 64 * 1024
@@ -214,10 +215,14 @@ class WebSecAPI:
             self.jobs.pop(stale["id"], None)
 
     def _job_view(self, job: dict) -> dict:
-        view = {"id": job["id"], "state": job["state"], "target": job["target"],
-                "preset": job["preset"], "active": job["active"], "started": job["started"]}
+        view = {"id": job["id"], "state": job["state"], "kind": job.get("kind", "scan"),
+                "target": job.get("target", ""), "preset": job["preset"],
+                "active": job.get("active", False), "started": job["started"]}
         if job["state"] == "done":
-            view["report"] = job.get("report")
+            if job.get("kind") == "bulk":
+                view["results"] = job.get("results")
+            else:
+                view["report"] = job.get("report")
         if job["state"] == "error":
             view["error"] = job.get("error", "the scan failed")
         return view
@@ -236,10 +241,15 @@ class WebSecAPI:
                 job["error"] = self._tail(job["stderr"]) or f"the engine exited with {process.returncode}"
             else:
                 try:
-                    job["report"] = self._read_json(job["stdout"])
+                    payload = self._read_json(job["stdout"])
                 except WebSecError as exc:
                     job["state"] = "error"
                     job["error"] = str(exc)
+                else:
+                    if job.get("kind") == "bulk":
+                        job["results"] = payload
+                    else:
+                        job["report"] = payload
         return self._job_view(job)
 
     def _tail(self, path: str) -> str:
@@ -285,6 +295,69 @@ class WebSecAPI:
             job["finished"] = time.time()
         return self._job_view(job)
 
+    # ── bulk validation ──
+
+    def _validate_bulk(self, payload: dict) -> dict:
+        """A bulk run is a bounded list of the same typed targets, passive only."""
+        unknown = set(payload) - {"targets", "preset"}
+        if unknown:
+            raise WebSecError(400, "Unknown field(s): " + ", ".join(sorted(unknown)))
+        targets = payload.get("targets")
+        if not isinstance(targets, list) or not targets:
+            raise WebSecError(400, "targets must be a non-empty list")
+        if len(targets) > MAX_BULK:
+            raise WebSecError(400, f"at most {MAX_BULK} targets per bulk run")
+        cleaned: List[str] = []
+        for target in targets:
+            if not isinstance(target, str) or not TARGET.match(target.strip()):
+                raise WebSecError(400, "each target must look like example.test")
+            candidate = target.strip().lower()
+            if candidate not in cleaned:
+                cleaned.append(candidate)
+        preset = payload.get("preset", "quick")
+        if preset not in PRESETS:
+            raise WebSecError(400, "preset must be quick, standard or full")
+        return {"targets": cleaned, "preset": preset}
+
+    def start_bulk(self, payload: dict) -> dict:
+        """Run the engine ``bulk`` command as one child; per-target refusals stay per-target.
+
+        The engine consults the scope guard for every target, so a target outside
+        the declared scope comes back as an error row instead of failing the run.
+        """
+        if len(json.dumps(payload, allow_nan=False).encode("utf-8")) > MAX_BODY:
+            raise WebSecError(413, "The request body is too large")
+        options = self._validate_bulk(payload)
+        with self.lock:
+            if any(job["state"] == "running" for job in self.jobs.values()):
+                raise WebSecError(409, "A scan is already running; wait for it or cancel it")
+            if not self.runner.is_file():
+                raise WebSecError(501, "The web-sec lab is not installed in this checkout")
+            job_id = uuid.uuid4().hex[:12]
+            directory = self.storage / "jobs" / job_id
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            targets_path = directory / "targets.txt"
+            stdout_path = directory / "bulk.json"
+            stderr_path = directory / "engine.log"
+            targets_path.write_text("\n".join(options["targets"]) + "\n", encoding="utf-8")
+            os.chmod(targets_path, 0o600)
+            args = [self.python, str(self.runner), "bulk", str(targets_path),
+                    "--preset", options["preset"], "--json"]
+            with open(stdout_path, "wb") as stdout, open(stderr_path, "wb") as stderr:
+                try:
+                    process = subprocess.Popen(args, cwd=self.root, stdout=stdout, stderr=stderr,
+                                               stdin=subprocess.DEVNULL, start_new_session=True)
+                except OSError as exc:
+                    raise WebSecError(500, f"The bulk run could not start: {exc}") from None
+            job = {"id": job_id, "state": "running", "kind": "bulk",
+                   "target": "", "preset": options["preset"], "active": False,
+                   "started": time.time(), "pid": process.pid, "process": process,
+                   "targets": options["targets"],
+                   "stdout": str(stdout_path), "stderr": str(stderr_path)}
+            self.jobs[job_id] = job
+            self._prune_jobs()
+            return self._job_view(job)
+
     # ── stored reports ───────────────────────────────────────────────────────
 
     def history(self, target: Optional[str] = None, limit: int = 20) -> dict:
@@ -329,6 +402,8 @@ class WebSecAPI:
             return self.plugins()
         if path.startswith("/api/websec/scans/"):
             return self.job(path.rsplit("/", 1)[-1])
+        if path.startswith("/api/websec/bulk/"):
+            return self.job(path.rsplit("/", 1)[-1])
         if path == "/api/websec/history":
             target = (query.get("target") or [""])[0] or None
             limit = (query.get("limit") or ["20"])[0]
@@ -350,9 +425,13 @@ class WebSecAPI:
     def post(self, path: str, data: dict) -> dict:
         if path == "/api/websec/scans":
             return self.start_scan(data)
+        if path == "/api/websec/bulk":
+            return self.start_bulk(data)
         raise WebSecError(404, f"Unknown Web Sec Lab route: {path}")
 
     def delete(self, path: str) -> dict:
         if path.startswith("/api/websec/scans/"):
+            return self.cancel(path.rsplit("/", 1)[-1])
+        if path.startswith("/api/websec/bulk/"):
             return self.cancel(path.rsplit("/", 1)[-1])
         raise WebSecError(404, f"Unknown Web Sec Lab route: {path}")

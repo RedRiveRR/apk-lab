@@ -3031,5 +3031,8 @@
   "Confirm the active scan": "Aktif taramayı onaylayın",
   "The scan would run these checks actively:": "Tarama şu kontrolleri aktif olarak çalıştıracak:",
   "Run with intrusive checks": "Saldırgan kontrollerle çalıştır",
-  "Scan passively": "Pasif tara"
+  "Scan passively": "Pasif tara",
+  "Bulk validation": "Toplu doğrulama",
+  "Targets file": "Hedef dosyası",
+  "Score": "Puan"
 }

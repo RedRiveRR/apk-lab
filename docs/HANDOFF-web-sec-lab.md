@@ -23,6 +23,20 @@ Commits (oldest first):
 b7e85b37d feat(console): register Web Sec Lab and serve /api/websec
 8c489334d feat(dashboard): add the Web Sec Lab workbench
 023ad0de2 docs(web-sec): add the knowledge node, plan and coverage TODO
+7a474ad96 docs(web-sec): add a handover for the remaining work
+3ab2572f4 feat(dashboard): add per-module drill-down panels to the Web Sec Lab workbench
+2cf433093 feat(dashboard): add Web Sec Lab export controls for SARIF, HTML and Markdown
+5ad0fee07 feat(dashboard): confirm active Web Sec Lab scans in a dialog
+01652ac26 feat(web-sec): add bulk validation to the console and the workbench
+41e3f93ca feat(web-sec): add a history timeline that opens stored reports
+5a034eeb8 feat(dashboard): add the Web Sec Lab catalogue browser
+c0123aa34 feat(dashboard): keep the Web Sec Lab workbench usable at 390 px
+c9ece1c33 feat(dashboard): give /labs/websec/ a dedicated public page
+b1c87eee0 feat(web-sec): surface scan pacing and the environment in the workbench
+90459b8d8 feat(web-sec): give bulk a CSV summary and a worst-grade exit code
+f86a31781 feat(web-sec): freeze SARIF rule ids per module and kind
+5d611cbdc feat(web-sec): port service map, deeper content scan, CDN ranges, scan --diff
+a9f1558be feat(web-sec): show live per-check progress in the workbench
 ```
 
 The branch is local: nothing pushed, no PR, no reservation file (a new lab has no
@@ -66,21 +80,27 @@ Implemented:
 
 - 29 checks: 16 built-in modules, 13 plugins; presets `quick|standard|full`.
 - Stdlib-only engine: DNS codec, HTTP client, TLS/DER certificate reader, WHOIS,
-  port checks; JSONL history; JSON, SARIF 2.1.0, Markdown, HTML reports; A+–F grade.
+  port checks; JSONL history (entries name their stored report); JSON, SARIF 2.1.0
+  (rule ids frozen per module + kind), Markdown, HTML reports; A+–F grade;
+  `scan --diff` and `--progress` JSONL events; `bulk --csv` with a worst-grade
+  exit code; curated port service map, one-level-deep content-scan chunks and a
+  CDN IPv4 range table in `origin_exposure`.
 - Scope guard on every transport, plus an allowlisted client for crt.sh, the
   Wayback CDX API and NVD only. Intrusive checks need `--active` and scope coverage.
-- Console readiness/plans, `/api/websec/…`, `./labctl websec`, test stage.
-- Dashboard workbench `/web-sec/`, public `/labs/websec/`, 8 locales, e2e spec.
-- `web-sec/TODO.md` records the remaining feature and UX gaps.
+- Console readiness/plans, `/api/websec/…` including bulk validation and per-check
+  progress on running jobs, `./labctl websec`, test stage.
+- Dashboard workbench `/web-sec/` with drill-down panels, catalogue browser, bulk
+  form, exports, active-scan dialog, per-target history timeline, live per-check
+  progress, pacing overrides, mobile pass at 390 px; dedicated public page at
+  `/labs/websec/`; 8 locales kept in step (3,015 keys).
+- `web-sec/TODO.md` records what is done and what remains.
 
-Verified before the rebase: engine 56 tests, console 13 tests, `npm run check`,
+Verified in this session: engine 66 tests, console 19 tests, `npm run check`,
 `npm run test:i18n`, `npm run test:tooling`, `lat check`, `npm run build` (dist
-restored), web-sec e2e 3/3, and `scripts/run-tests.sh --changed` (13 stages passed;
-the Android stage fails only on the pre-existing LibreSSL errors below).
-
-After the rebase onto `13de11145`, only light checks were rerun: engine tests,
-console tests, `lat check`, `npm run check`, `npm run test:i18n`. The full changed
-suite, the build and e2e have **not** been rerun since the rebase.
+restored), and `scripts/run-tests.sh --changed` (14 stages passed, 0 failed; the
+only skips are cargo-absent and dist-freshness-by-design). The e2e suite has
+**not** run since the feature work — 10 specs now exist in `web-sec.spec.ts` and
+they need a run in an owner-approved mode before landing (see below).
 
 ## 4. Rules that must not change
 
@@ -103,51 +123,27 @@ suite, the build and e2e have **not** been rerun since the rebase.
 
 ## 5. Remaining work
 
-Full detail with acceptance criteria is in `web-sec/TODO.md`. Summary with the
-files each item touches:
-
-### UX (dashboard/console)
+Full detail is in `web-sec/TODO.md`. What is left after this session:
 
 | # | Item | Start here |
 |---|---|---|
-| 1 | Per-module drill-down panels (WHOIS, DNS grid, certificate, headers/cookies, port matrix, SEO/tech cards) from `report.modules[].data` | `dashboard/src/views/web-sec/pages.tsx`, `src/lib/api.ts`. Add an e2e case that opens two panels. |
-| 2 | Bulk validation UI | engine `bulk` exists; add a console job endpoint in `console/websec_api.py`, then a form + grade table in the workbench. |
-| 3 | Export controls (SARIF, HTML, Markdown, copy) | `api.websecReport` already renders every format; add buttons and MIME types. |
-| 4 | Active-scan confirmation dialog | replace the checkbox; list the intrusive module ids and the scope entry. |
-| 5 | History timeline, open a report from a row, compare two runs | `console/websec_api.py` history needs report names per entry; UI table → timeline. |
-| 6 | Live per-module progress | engine `runner.py` must emit progress (JSONL), console job state must expose it; the largest item. |
-| 7 | Catalogue browser with descriptions/group/upstream/active | `/api/websec/modules` already returns them. |
-| 8 | Mobile layout at 390 px | CSS only; console routes are not in the public crawl. |
-| 9 | Public `/labs/websec/` polish | `src/views/lab-page.tsx` or a dedicated component. |
-| 10 | Settings surface (storage, resolver, pacing, history limits) | engine `config.Options`, console status; typed overrides. |
+| 1 | Compare UI in the workbench: `scan --diff` does the matching; add a console endpoint and a timeline panel that shows a run-to-run diff | `console/websec_api.py`, `dashboard/src/views/web-sec/pages.tsx` |
+| 2 | In-app SecOps guides as modals (the knowledge docs exist; no modal surface yet) | `dashboard/src/views/web-sec/pages.tsx` |
 
-### Engine
+Non-blocking: `cveLookup` and module selection in the bulk form; console-only
+routes stay out of the localized crawl (do not re-add `/web-sec/` to
+`crawl.spec.ts` MAIN_ROUTES).
 
-- `bulk`: CSV summary and an exit code for the worst grade.
-- SARIF: freeze one rule id per module + kind instead of title-derived ids.
-- `port_exposure`: curated service map when a port has no banner.
-- `content_scan`: follow imported chunks one level deeper, same byte cap.
-- `origin_exposure`: CDN range table instead of header heuristics.
-- `scan --diff <report.json>` to compare two runs.
-
-### Verification expected for every item
+Verification expected before landing:
 
 ```bash
-# engine
-cd web-sec/engine && python3 -m pytest -q
-
-# console
-cd android-lab/lab && ../../.venv-test/bin/python -m pytest tests/test_websec_console.py -q
-
-# dashboard
-cd dashboard && npm run check && npm run test:i18n
-
-# knowledge
+cd web-sec/engine && python3 -m pytest -q        # 66 tests
+cd android-lab/lab && ../../.venv-test/bin/python -m pytest tests/test_websec_console.py -q  # 19 tests
+cd dashboard && npm run check && npm run test:i18n && npm run build && git restore dashboard/dist
 lat check
-
-# before landing
 scripts/run-tests.sh --changed
-scripts/e2e.sh --dry-run --changed          # show it, then ask the owner
+scripts/e2e.sh --dry-run --changed               # show it, then ask the owner
+cd .. && git clean -fdq dashboard/dist           # only after a build, never commit dist
 ```
 
 ## 6. Environment notes

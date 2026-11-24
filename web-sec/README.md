@@ -21,7 +21,8 @@ cp console/scope.example.json scope.json     # then list the hosts you own
 
 ./labctl websec scan example.test --preset quick --format text
 ./labctl websec scan example.test --format sarif --out report.sarif
-./labctl websec bulk targets.txt --preset quick
+./labctl websec scan example.test --diff 20260101T000000Z-95.json   # what changed since the last run
+./labctl websec bulk targets.txt --csv                             # one row per target; exits with the worst grade
 ./labctl websec history --limit 10
 ./labctl websec report --target example.test --list
 ```
@@ -49,9 +50,10 @@ is given **and** the scope covers the target.
 ## Reports
 
 JSON, SARIF 2.1.0, Markdown, text and a self-contained HTML page. Rule ids are
-`WEBSEC/<module>/<title>`, and `security-severity` follows the usual 9.5 → 0.5
-mapping, so the SARIF drops straight into GitHub code scanning or any SARIF
-viewer. The schema is in [knowledge/report-schema.md](knowledge/report-schema.md).
+`WEBSEC/<module>/<kind>` — the stable kind each check declares — so a reworded
+finding does not become a new rule, and `security-severity` follows the usual
+9.5 → 0.5 mapping, so the SARIF drops straight into GitHub code scanning or any
+SARIF viewer. The schema is in [knowledge/report-schema.md](knowledge/report-schema.md).
 
 ## State and privacy
 

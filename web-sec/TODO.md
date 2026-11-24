@@ -27,64 +27,61 @@ For locations, the state of the branch and the continuation checklist, read
 
 | Upstream feature | Feature | UX |
 |---|---|---|
-| WHOIS, DNS, SSL chain, IP resolution, HTTP status | done (`domain_info`, `dns_records`, `ssl_san`, `geo_analysis`, `security_analysis`) | data only in the module table; no drill-down panel |
-| Port matrix | done (`port_exposure`, active) | data only; no matrix view |
-| Security headers / cookies / CORS | done (`security_analysis`, `cookies_cors`) | findings only |
-| SEO cards (13 categories) | done (`seo_analysis`) | data only |
-| Technology matrix | done (`web_technologies`) | data only |
+| WHOIS, DNS, SSL chain, IP resolution, HTTP status | done (`domain_info`, `dns_records`, `ssl_san`, `geo_analysis`, `security_analysis`) | drill-down panels in the workbench |
+| Port matrix | done (`port_exposure`, active) | drill-down panel with the port table and CVE matches |
+| Security headers / cookies / CORS | done (`security_analysis`, `cookies_cors`) | headers/cookies drill-down panel |
+| SEO cards (13 categories) | done (`seo_analysis`) | SEO drill-down panel |
+| Technology matrix | done (`web_technologies`) | technology drill-down panel |
 | Contact spider | done (`contact_spy`) | data only |
 | Subdomain probing | done (`subdomain_discovery`, crt.sh) | data only |
 | Secret scanner | done (`content_scan`) | findings only |
 | Takeover analysis | done (`subdomain_takeover`) | findings only |
 | Cloudflare origin view | adapted (`origin_exposure`, passive) | findings only |
 | Nmap → NVD correlation | adapted (`port_exposure --cve-lookup`) | findings only |
-| Bulk domain validation | done in CLI (`bulk`) | **missing** |
-| Scan history | done (JSONL + dashboard table) | list only; no timeline/diff |
+| Bulk domain validation | done (CLI `bulk --csv`, console endpoint, workbench form) | per-target grade table with refusal rows |
+| Scan history | done (JSONL + dashboard timeline) | per-target timeline, open from a row; run-to-run diff via `scan --diff` |
 | Dependency / system health | done (`doctor`, console readiness) | lab page |
 | React source-leak view | done (`react_exposure`) | findings only |
 | React RCE / React2Shell probes | excluded by policy | — |
 | Honeypot listener | excluded (out of scope) | — |
 | SQLite database manager | replaced by JSONL | no manager UI (intentional) |
-| Settings screen | partial (env + CLI options) | **missing** |
+| Settings screen | done in the workbench (pacing overrides with engine bounds, environment, history limits) | — |
 | Command palette | done (global palette entries) | — |
 | In-app SecOps guides | knowledge docs exist | **missing** as modals |
 
-## UX gaps, in priority order
+## Completed in this pass
 
-1. **Per-module drill-down panels.** Read `report.modules[].data` and render WHOIS
-   facts, the DNS grid, certificate names/expiry, the header/cookie table, the port
-   matrix, SEO cards and the technology matrix. Acceptance: each module with data
-   gets a panel, and the e2e spec opens the WHOIS and headers panels.
-2. **Bulk validation UI.** File input, per-target grade table, bounded progress.
-   Acceptance: mocked job renders three targets and one refusal.
-3. **Export controls.** SARIF, HTML and Markdown download next to the JSON one,
-   with a copy button. Acceptance: each download returns the right MIME type.
-4. **Active-scan confirmation.** Replace the bare checkbox with a dialog that names
-   the intrusive modules and the scope entry they rely on.
-5. **History timeline.** Per-target timeline, open a stored report from a row,
-   compare two reports. Acceptance: clicking a row loads that report.
-6. **Live progress.** The API reports `running`; add per-module progress so the
-   workbench can show which check is running and which were skipped.
-7. **Catalogue browser.** A page or panel with module descriptions, group, weight,
-   upstream name and the active flag (the inline checkbox list is a stopgap).
-8. **Mobile layout pass** for the workbench at 390 px (the public crawl does not
-   cover console-only routes).
-9. **Public readiness page polish** for `/labs/websec/` beyond the generic lab page.
-10. **Settings surface.** Show storage path, resolver, pacing and history limits;
-    allow overriding them with the same typed validation as the CLI.
+- **Per-module drill-down panels** over `report.modules[].data` (WHOIS, DNS grid,
+  certificate, headers/cookies, CORS, port matrix, SEO, technologies) with a
+  generic fallback for every other module; the e2e spec opens two panels.
+- **Bulk validation UI** on a new console job endpoint (`POST /api/websec/bulk`,
+  at most 20 passive targets, one heavy job at a time) with a per-target grade
+  table; out-of-scope targets render as refusal rows.
+- **Export controls**: JSON, SARIF, HTML and Markdown downloads with per-format
+  MIME types and a copy button on the open preview.
+- **Active-scan confirmation dialog** naming the intrusive checks and the scope
+  entry, with run-actively / run-passively / cancel.
+- **History timeline** with a target filter and open-from-row (history entries
+  now carry the stored report's name).
+- **Live per-check progress**: the engine streams JSONL events, the console
+  exposes parsed module order and statuses on the running job, the workbench
+  lists done / running / pending checks.
+- **Catalogue browser**, **mobile pass at 390 px** (scrollable tables plus an
+  overflow e2e case), **dedicated public page** for `/labs/websec/`, and a
+  **settings surface** (request timeout and scan budget overrides with the
+  engine's bounds, environment, history limits).
+- Engine gaps closed: `bulk --csv` with a worst-grade exit code, SARIF rule ids
+  frozen per module + kind (every check declares a kind), the curated port
+  service map, one-level-deep content-scan chunks, the CDN IPv4 range table in
+  `origin_exposure`, and `scan --diff`.
 
-## Engine gaps
+## Remaining
 
-- `bulk` writes one JSON per target; add a CSV summary and an exit code for the
-  worst grade.
-- SARIF rule ids use the finding title; freeze one rule per module + kind so a
-  wording change does not create a new rule.
-- `port_exposure` service detection is banner-only; add a small curated service map
-  for ports without a banner.
-- `content_scan` scans the first five scripts; follow imported chunks one level
-  deeper with the same byte cap.
-- `origin_exposure` is header-based; add a CDN range table for the common providers.
-- Add `--diff <report.json>` to compare two scans of the same target.
+1. **Compare UI in the workbench.** `scan --diff` does the matching; the timeline
+   still needs a console endpoint and a panel to show a run-to-run diff.
+2. **In-app SecOps guides as modals** (knowledge docs exist; no modal surface).
+3. Optional polish: expose `cveLookup` and module selection in the bulk form once
+   a real workload asks for them.
 
 ## Verification expected for each item
 

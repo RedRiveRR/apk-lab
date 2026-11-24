@@ -36,34 +36,46 @@ No exploitation payloads, brute force or RCE probes were ported.
 
 ## Reports
 
-[[web-sec/engine/websec/report.py#to_sarif]] emits SARIF 2.1.0 with `WEBSEC/<module>/<title>` rule ids and the usual severity mapping.
+[[web-sec/engine/websec/report.py#to_sarif]] emits SARIF 2.1.0 with `WEBSEC/<module>/<kind>` rule ids (the stable kind each check declares, title slug as fallback) and the usual severity mapping.
 
 [[web-sec/engine/websec/report.py#to_markdown]] and `to_html` are pure functions of
 the same document. [[web-sec/engine/websec/grade.py]] turns findings into the
 `A+ … F` grade, capped per module so one noisy check cannot dominate.
 [[web-sec/knowledge/report-schema.md]] documents every field.
-[[web-sec/engine/websec/history.py#History]] keeps a bounded JSONL summary and the
-last 20 reports per target under `web-sec/storage`, mode 0700/0600.
+[[web-sec/engine/websec/history.py#History]] keeps a bounded JSONL summary (each entry
+names its stored report) and the last 20 reports per target under `web-sec/storage`,
+mode 0700/0600.
 
 ## Console and CLI
 
 `./labctl websec <command>` runs [[web-sec/run.py]]. The console answers `/api/websec/…` behind the localhost guard.
 
+`scan --diff <report.json>` compares a run with a stored report of the same target
+(findings match on module and kind), `bulk --csv` writes one row per target and
+exits with the worst grade, and `scan --progress <file>` streams JSONL per-module
+events for the console.
+
 [[console/websec_control.py#lab_status]] reports Python, storage and scope
 separately, so the dashboard can say what is missing, and
 [[console/websec_control.py#build_plan]] produces the typed `status|doctor|setup`
 command the operator confirms. [[console/websec_api.py#WebSecAPI]] starts one scan
-child process at a time, reads the report back with a size cap, and validates every
-stored report name before opening it.
+child process at a time, tails the engine's JSONL progress file so a running job
+reports per-check state, runs bounded passive bulk validation through the engine,
+reads the report back with a size cap, and validates every stored report name
+before opening it.
 
 ## Dashboard
 
 `/web-sec/` is the workbench, implemented in [[dashboard/src/views/web-sec/pages.tsx]].
 
-It renders the engine catalogue, a target form with preset, protocol and the
-explicit `--active` opt-in, live scan state, findings filtered by severity, the
-per-check table, stored reports with a Markdown preview and JSON download, and
-history. The public `/labs/websec/` page uses the generic lab page for readiness.
+It renders the engine catalogue plus a catalogue table (description, group,
+weight, upstream, active flag), a target form with preset, protocol, pacing
+overrides and the `--active` confirmation dialog, live per-check progress,
+findings filtered by severity, per-module drill-down panels over
+`report.modules[].data`, stored reports with a Markdown preview and
+JSON/SARIF/HTML/Markdown downloads, bulk validation with a per-target grade
+table, and a per-target history timeline that opens stored reports. The public
+`/labs/websec/` page has its own read-only readiness and boundaries view.
 Module names come from the engine catalogue, so the dashboard translates only its
 own chrome.
 

@@ -62,18 +62,21 @@ for a failed check. `data` is the module's own bounded JSON.
   "detail": "Nothing limits which scripts, frames or connections the page may load.",
   "evidence": "",
   "remediation": "Start with a report-only policy, then enforce script-src 'self'.",
-  "refs": []
+  "refs": [],
+  "kind": "csp-missing"
 }
 ```
 
-`severity` is one of `critical`, `high`, `medium`, `low`, `info`. Titles are the
-SARIF rule name, so keep them stable. Evidence is truncated to 1200 characters and
-secrets are masked before they reach a report.
+`severity` is one of `critical`, `high`, `medium`, `low`, `info`. `kind` is the
+stable rule identity every check declares; SARIF and `scan --diff` match
+findings by it, so rewording a title does not create a new rule. Evidence is
+truncated to 1200 characters and secrets are masked before they reach a report.
 
 ## SARIF 2.1.0
 
 - `runs[0].tool.driver.name` is `oslab-websec`.
-- `ruleId` is `WEBSEC/<module>/<slug(title)>`.
+- `ruleId` is `WEBSEC/<module>/<slug(kind)>`, falling back to the title slug for
+  a finding whose check declares no kind.
 - Level: critical/high → `error`, medium → `warning`, low/info → `note`.
 - `properties["security-severity"]`: 9.5, 8.0, 5.5, 3.0, 0.5.
 - Each result points at the target URL as its artifact location.

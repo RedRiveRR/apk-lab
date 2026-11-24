@@ -59,6 +59,10 @@ try:
 except ImportError:
     web_api = None
 try:
+    import websec_api  # noqa: E402  (console/websec_api.py: Web Sec Lab scans and reports)
+except ImportError:
+    websec_api = None
+try:
     import winapps  # noqa: E402  (console/winapps.py: native Windows app mirror and guarded UIA control)
 except ImportError:
     winapps = None
@@ -219,7 +223,7 @@ class LabHttpHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         # Polling is frequent; keep the terminal for errors
-        if not self.path.startswith(("/api/logs", "/api/jobs", "/api/health", "/api/host", "/api/labs/", "/api/capabilities", "/api/cleanup", "/api/web")):
+        if not self.path.startswith(("/api/logs", "/api/jobs", "/api/health", "/api/host", "/api/labs/", "/api/capabilities", "/api/cleanup", "/api/websec", "/api/web")):
             super().log_message(fmt, *args)
 
     def _host_ok(self) -> bool:
@@ -256,6 +260,9 @@ class LabHttpHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/cleanup"):
             self._cleanup_get(path, urllib.parse.parse_qs(parsed.query, keep_blank_values=True))
+            return
+        if path.startswith("/api/websec"):
+            self._websec_get(path, urllib.parse.parse_qs(parsed.query, keep_blank_values=True))
             return
         if path.startswith("/api/web"):
             self._web_get(path, urllib.parse.parse_qs(parsed.query, keep_blank_values=True))
@@ -352,6 +359,44 @@ class LabHttpHandler(BaseHTTPRequestHandler):
             self._weblab_api = web_api.WebLabAPI(REPO_ROOT)
         return self._weblab_api
 
+    def _websec(self):
+        if websec_api is None:
+            self._json(501, {"error": "Web Sec Lab console support is not installed"})
+            return None
+        return websec_api.api_for(REPO_ROOT)
+
+    def _websec_get(self, path: str, query: dict):
+        """Web Sec Lab: readiness, catalogue, scan state, history and reports."""
+        api = self._websec()
+        if api is None:
+            return
+        try:
+            self._json(200, api.get(path, query))
+        except websec_api.WebSecError as exc:
+            self._json(exc.status, {"error": str(exc)})
+
+    def _websec_post(self, path: str):
+        """Web Sec Lab: start a typed scan. Targets and caps are validated by the API."""
+        api = self._websec()
+        if api is None:
+            return
+        try:
+            data = self._read_json()
+            self._json(202, api.post(path, data))
+        except websec_api.WebSecError as exc:
+            self._json(exc.status, {"error": str(exc)})
+        except ValueError as exc:
+            self._json(400, {"error": str(exc)})
+
+    def _websec_delete(self, path: str):
+        api = self._websec()
+        if api is None:
+            return
+        try:
+            self._json(200, api.delete(path))
+        except websec_api.WebSecError as exc:
+            self._json(exc.status, {"error": str(exc)})
+
     def _web_get(self, path: str, query: dict):
         """Web Lab: readiness, windows, injections, profiles and captured events."""
         api = self._weblab()
@@ -422,6 +467,9 @@ class LabHttpHandler(BaseHTTPRequestHandler):
             self._json(403, {"error": "Missing X-OSLab header"})
             return
         path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/api/websec"):
+            self._websec_delete(path)
+            return
         if path.startswith("/api/web"):
             api = self._weblab()
             if api is None:
@@ -634,6 +682,9 @@ class LabHttpHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/cleanup"):
             self._cleanup_post(path)
+            return
+        if path.startswith("/api/websec"):
+            self._websec_post(path)
             return
         if path.startswith("/api/web"):
             self._web_post(path)

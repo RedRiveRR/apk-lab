@@ -545,6 +545,33 @@
           }
         }
       ]
+    },
+    {
+      "id": "websec",
+      "title": "Web Sec Lab",
+      "description": "Scope-guarded web posture assessment.",
+      "items": [
+        {
+          "id": "websec-scan",
+          "lab": "websec",
+          "title": "Web Sec Lab",
+          "summary": "DNS, TLS, headers, cookies and exposure with JSON, SARIF and Markdown reports.",
+          "support": {
+            "linux": {
+              "level": "full",
+              "note": "Native Python 3.9+; no Docker, KVM or third-party package required."
+            },
+            "macos": {
+              "level": "full",
+              "note": "Native Python 3.9+; no Docker, KVM or third-party package required."
+            },
+            "windows": {
+              "level": "full",
+              "note": "Native Python 3.9+; no Docker, KVM or third-party package required."
+            }
+          }
+        }
+      ]
     }
   ]
 }

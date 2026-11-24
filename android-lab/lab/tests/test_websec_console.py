@@ -1,4 +1,5 @@
 """Web Sec Lab console contracts: readiness, typed plans and API validation."""
+import json
 import sys
 from pathlib import Path
 
@@ -142,6 +143,32 @@ def test_start_scan_passes_pacing_to_the_engine(tmp_path, monkeypatch):
     args = seen["args"]
     assert args[args.index("--timeout") + 1] == "12.0"
     assert args[args.index("--deadline") + 1] == "120.0"
+
+
+def test_running_job_reports_module_progress(tmp_path, monkeypatch):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    api.runner = tmp_path / "run.py"
+    api.runner.write_text("", encoding="utf-8")
+    api.storage = tmp_path / "storage"
+
+    class FakeProcess:
+        pid = 4243
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(websec_api.subprocess, "Popen", lambda args, **kwargs: FakeProcess())
+    job = api.start_scan({"target": "example.test"})
+    progress_path = api.storage / "jobs" / job["id"] / "progress.jsonl"
+    progress_path.write_text(
+        json.dumps({"modules": ["dns_records", "security_analysis"]}) + "\n"
+        + json.dumps({"id": "dns_records", "status": "ok", "duration_ms": 5}) + "\n",
+        encoding="utf-8")
+    view = api.job(job["id"])
+    assert view["progress"]["modules"] == [
+        {"id": "dns_records", "status": "ok"},
+        {"id": "security_analysis", "status": None},
+    ]
 
 
 def test_start_scan_refuses_an_out_of_scope_target_before_spawning(tmp_path, monkeypatch):

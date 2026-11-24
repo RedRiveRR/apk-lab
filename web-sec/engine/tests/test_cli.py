@@ -141,7 +141,7 @@ def _previous_document(score=95):
 def test_scan_diff_against_a_stored_report(tmp_path, monkeypatch):
     monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
     previous = History().append(_previous_document())
-    monkeypatch.setattr(websec_cli, "run_scan", lambda options: _fake_scan_result())
+    monkeypatch.setattr(websec_cli, "run_scan", lambda options, progress=None: _fake_scan_result())
     code, out, _ = run(["scan", "example.test", "--preset", "standard",
                         "--diff", previous["name"], "--json"])
     assert code == 0
@@ -154,7 +154,7 @@ def test_scan_diff_against_a_stored_report(tmp_path, monkeypatch):
 def test_scan_diff_without_json_renders_lines(tmp_path, monkeypatch):
     monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
     previous = History().append(_previous_document())
-    monkeypatch.setattr(websec_cli, "run_scan", lambda options: _fake_scan_result())
+    monkeypatch.setattr(websec_cli, "run_scan", lambda options, progress=None: _fake_scan_result())
     code, out, _ = run(["scan", "example.test", "--diff", previous["name"]])
     assert code == 0
     assert "95 → 90" in out
@@ -163,7 +163,7 @@ def test_scan_diff_without_json_renders_lines(tmp_path, monkeypatch):
 
 def test_scan_diff_refuses_a_missing_report(tmp_path, monkeypatch):
     monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
-    monkeypatch.setattr(websec_cli, "run_scan", lambda options: _fake_scan_result())
+    monkeypatch.setattr(websec_cli, "run_scan", lambda options, progress=None: _fake_scan_result())
     code, out, err = run(["scan", "example.test", "--diff", "20990101T000000Z-99.json", "--json"])
     assert code == 2
     assert "cannot read the previous report" in err

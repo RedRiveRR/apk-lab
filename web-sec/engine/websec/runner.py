@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from .config import Options
 from .context import Context
@@ -66,12 +66,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def run_scan(options: Options, guard=None, context: Optional[Context] = None) -> ScanResult:
+def run_scan(options: Options, guard=None, context: Optional[Context] = None,
+             progress: Optional[Callable[[Dict[str, object]], None]] = None) -> ScanResult:
     """Execute the selected modules against one target.
 
     A target outside the declared scope raises :class:`ScopeRefused` before any
     module runs. A module that is refused mid-scan (a redirect to another host,
-    for example) is recorded as ``refused`` and the rest continue.
+    for example) is recorded as ``refused`` and the rest continue. ``progress``
+    is a best-effort sink (the console monitors a JSONL file through it) that
+    first receives the module order and then one event per finished module.
     """
     from .catalog import ensure_loaded
     ensure_loaded()
@@ -92,10 +95,14 @@ def run_scan(options: Options, guard=None, context: Optional[Context] = None) ->
                         duration_seconds=0.0, options=options)
     started = time.monotonic()
     produced: Dict[str, object] = {}
+    if progress is not None:
+        progress({"modules": [spec.id for spec in specs]})
 
     for spec in specs:
         outcome = _run_one(spec, ctx, produced, options, result)
         result.outcomes[spec.id] = outcome
+        if progress is not None:
+            progress({"id": spec.id, "status": outcome.status, "duration_ms": outcome.duration_ms})
         if outcome.status in ("ok", "empty"):
             produced[spec.id] = outcome.data
         ctx.findings_by_module[spec.id] = list(outcome.findings)

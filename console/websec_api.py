@@ -199,6 +199,8 @@ class WebSecAPI:
                 args += ["--timeout", str(options["timeout"])]
             if options["deadline"] is not None:
                 args += ["--deadline", str(options["deadline"])]
+            progress_path = directory / "progress.jsonl"
+            args += ["--progress", str(progress_path)]
             with open(stdout_path, "wb") as stdout, open(stderr_path, "wb") as stderr:
                 try:
                     process = subprocess.Popen(args, cwd=self.root, stdout=stdout, stderr=stderr,
@@ -208,7 +210,8 @@ class WebSecAPI:
             job = {"id": job_id, "state": "running", "target": options["target"],
                    "preset": options["preset"], "active": options["active"],
                    "started": time.time(), "pid": process.pid, "process": process,
-                   "stdout": str(stdout_path), "stderr": str(stderr_path)}
+                   "stdout": str(stdout_path), "stderr": str(stderr_path),
+                   "progress_path": str(progress_path)}
             self.jobs[job_id] = job
             self._prune_jobs()
             return self._job_view(job)
@@ -255,7 +258,9 @@ class WebSecAPI:
         if job["state"] == "running":
             process = job["process"]
             if process.poll() is None:
-                return self._job_view(job)
+                view = self._job_view(job)
+                view["progress"] = self._progress(job)
+                return view
             job["state"] = "error" if process.returncode else "done"
             job["finished"] = time.time()
             if process.returncode:
@@ -272,6 +277,35 @@ class WebSecAPI:
                     else:
                         job["report"] = payload
         return self._job_view(job)
+
+    def _progress(self, job: dict) -> dict:
+        """Parse the engine's JSONL progress file into module order plus statuses."""
+        path = job.get("progress_path")
+        if not path:
+            return {}
+        try:
+            if os.path.getsize(path) > 65536:
+                return {}
+            data = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return {}
+        order: List[str] = []
+        statuses: Dict[str, str] = {}
+        for line in data.splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            if isinstance(event.get("modules"), list):
+                order = [str(module_id) for module_id in event["modules"]]
+            module_id = event.get("id")
+            if isinstance(module_id, str) and event.get("status"):
+                statuses[module_id] = str(event["status"])
+        if not order:
+            return {}
+        return {"modules": [{"id": module_id, "status": statuses.get(module_id)} for module_id in order]}
 
     def _tail(self, path: str) -> str:
         try:

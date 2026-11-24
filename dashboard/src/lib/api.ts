@@ -778,6 +778,7 @@ export interface WebSecJob {
   id: string; state: "running" | "done" | "error" | "cancelled";
   target: string; preset: string; active: boolean; started: number;
   report?: WebSecReport; error?: string;
+  progress?: { modules: { id: string; status: string | null }[] };
 }
 export interface WebSecHistoryEntry {
   target: string; scanned_at: string; score: number; grade: string;

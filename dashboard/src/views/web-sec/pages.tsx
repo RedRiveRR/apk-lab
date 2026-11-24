@@ -233,6 +233,9 @@ export default function WebSecLabPage() {
     () => (historyTarget ? history.filter((entry) => entry.target === historyTarget) : history),
     [history, historyTarget]);
 
+  const moduleLabels = useMemo(() => new Map(modules.map((module) => [module.id, module.label])), [modules]);
+  const progress = running ? job?.progress : undefined;
+
   const toggleModule = (id: string) => {
     setOpenModules((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -534,7 +537,20 @@ export default function WebSecLabPage() {
             </div>
           </details>
 
-          {running ? (
+          {progress && progress.modules.length ? (
+            <ul aria-live="polite" className="mt-3 space-y-1">
+              {progress.modules.map((module, index) => {
+                const firstPending = progress.modules.findIndex((entry) => !entry.status);
+                const state = module.status ?? (index === firstPending ? "running" : "pending");
+                return (
+                  <li key={module.id} className="flex items-center gap-2 text-xs">
+                    <span className={state === "running" ? "text-[#f36c21]" : "text-(--iux-muted-foreground)"}>{state}</span>
+                    <span>{moduleLabels.get(module.id) ?? module.id}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : running ? (
             <p aria-live="polite" className="mt-3 text-sm text-(--iux-muted-foreground)">
               Scanning {job?.target}…
             </p>

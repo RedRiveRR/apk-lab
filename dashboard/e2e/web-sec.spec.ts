@@ -295,7 +295,30 @@ test("a history row opens the stored report in the workbench", async ({ page }) 
   await page.goto("/web-sec/");
   await expect(page.getByRole("main").getByText("2026-11-24T00:00:00+00:00")).toBeVisible();
   await page.getByRole("main").getByRole("button", { name: "Open" }).click();
-  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  await expect(page.getByRole("main").getByText("running")).toBeVisible();
+  await expect(page.getByRole("main").getByText("ok").first()).toBeVisible();
+  await expect(page.getByRole("main").getByText("pending")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
+});
+
+test("a running scan shows live per-check progress", async ({ page }) => {
+  await mockStatus(page, status);
+  let polls = 0;
+  const runningJob = { ...job("running"), progress: {
+    modules: [{ id: "dns_records", status: "ok" }, { id: "security_analysis", status: null }]
+  } };
+  await page.route(/\/api\/websec\/scans$/, (route) => route.fulfill({ status: 202, json: runningJob }));
+  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
+    polls += 1;
+    return route.fulfill({ json: polls < 2 ? runningJob : job("done", { report }) });
+  });
+
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByRole("main").getByText("DNS records")).toBeVisible();
+  await expect(page.getByRole("main").getByText("running")).toBeVisible();
+  await expect(page.getByRole("main").getByText("security_analysis")).toBeVisible();
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
 });
 

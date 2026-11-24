@@ -186,6 +186,31 @@ def setup(as_json: bool = False) -> int:
     return 0
 
 
+class _ProgressFile:
+    """Best-effort JSONL progress sink; the console tails this file while a scan runs."""
+
+    def __init__(self, path: str) -> None:
+        self._handle = None
+        try:
+            self._handle = open(path, "a", encoding="utf-8")
+        except OSError:
+            self._handle = None
+
+    def __call__(self, event: Dict[str, object]) -> None:
+        if self._handle is None:
+            return
+        try:
+            self._handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+            self._handle.flush()
+        except OSError:
+            pass
+
+    def close(self) -> None:
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+
+
 def scan(args) -> int:
     try:
         options = Options.build(
@@ -196,14 +221,18 @@ def scan(args) -> int:
     except ValueError as exc:
         _error(f"invalid options: {exc}")
         return 2
+    sink = _ProgressFile(args.progress) if args.progress else None
     try:
-        result = run_scan(options)
+        result = run_scan(options, progress=sink)
     except ScopeRefused as exc:
         _error(f"refused: {exc.reason}")
         return 1
     except ValueError as exc:
         _error(f"invalid scan: {exc}")
         return 2
+    finally:
+        if sink is not None:
+            sink.close()
     document = report_module.build(result)
     fmt = "json" if args.json else args.format
     rendered = report_module.render(document, fmt)
@@ -393,6 +422,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--json", action="store_true", help="shortcut for --format json")
     p_scan.add_argument("--diff", default="",
                         help="compare against a stored report name of the same target")
+    p_scan.add_argument("--progress", default="",
+                        help="append JSONL progress events to a file while the scan runs")
     p_scan.add_argument("--out", default="")
     p_scan.add_argument("--no-history", action="store_true")
     p_scan.add_argument("--timeout", type=float, default=6.0)

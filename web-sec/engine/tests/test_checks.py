@@ -286,6 +286,17 @@ def test_runner_honours_an_expired_budget():
     assert "budget" in result.outcomes["security_txt"].note
 
 
+def test_runner_emits_progress_events():
+    events: list = []
+    ctx = make_context()
+    run_scan(Options.build(ZONE, modules="security_txt,geo_analysis"), context=ctx,
+             progress=events.append)
+    assert set(events[0]["modules"]) == {"security_txt", "geo_analysis"}
+    statuses = {event["id"]: event["status"] for event in events if "id" in event}
+    assert statuses["security_txt"] in ("ok", "empty")
+    assert statuses["geo_analysis"] in ("ok", "empty")
+
+
 def test_port_exposure_names_a_bannerless_known_port():
     ctx = make_context(open_ports={443: ""})
     data, _ = _call("port_exposure", ctx)

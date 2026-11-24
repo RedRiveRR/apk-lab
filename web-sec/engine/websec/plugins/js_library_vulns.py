@@ -50,7 +50,7 @@ def js_library_vulns(ctx):
     findings: List[Finding] = []
     for entry in found:
         findings.append(Finding(
-            module="js_library_vulns", severity=entry["severity"],
+            module="js_library_vulns", kind="outdated-library", severity=entry["severity"],
             title=f"{entry['library']} {entry['version']} is older than {entry['fixed']}",
             detail=f"Known issue: {entry['reference']}",
             remediation=f"Upgrade {entry['library']} to {entry['fixed']} or newer.",

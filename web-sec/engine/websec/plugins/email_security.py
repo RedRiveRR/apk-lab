@@ -40,39 +40,39 @@ def email_security(ctx):
             "mta_sts": mta_sts, "bimi": bimi}
     findings: List[Finding] = []
     if not spf:
-        findings.append(Finding(module="email_security", severity="medium",
+        findings.append(Finding(module="email_security", severity="medium", kind="spf-missing",
                                 title="No SPF record is published",
                                 detail="Receivers cannot tell which hosts may send mail for the domain.",
                                 remediation="Publish v=spf1 with only the sending hosts and end in -all."))
     else:
         lowered = spf.lower()
         if "+all" in lowered or " ?all" in lowered:
-            findings.append(Finding(module="email_security", severity="high",
+            findings.append(Finding(module="email_security", severity="high", kind="spf-all",
                                     title="SPF allows every sender",
                                     detail="The policy ends in +all or ?all.",
                                     remediation="End the record in -all and list only real senders."))
         if len(spf_records) > 1:
-            findings.append(Finding(module="email_security", severity="medium",
+            findings.append(Finding(module="email_security", severity="medium", kind="spf-multiple",
                                     title="More than one SPF record is published",
                                     detail=f"{len(spf_records)} records; receivers treat this as a permanent error.",
                                     remediation="Merge them into one record."))
     if not dmarc:
-        findings.append(Finding(module="email_security", severity="high",
+        findings.append(Finding(module="email_security", severity="high", kind="dmarc-missing",
                                 title="No DMARC record is published",
                                 detail="Anyone can spoof the domain in the From header.",
                                 remediation="Publish _dmarc TXT starting with p=none, then move to quarantine and reject."))
     elif policy == "none":
-        findings.append(Finding(module="email_security", severity="medium",
+        findings.append(Finding(module="email_security", severity="medium", kind="dmarc-none",
                                 title="DMARC only monitors",
                                 detail="p=none asks receivers to report but not to block.",
                                 remediation="Move to p=quarantine, then p=reject, once reports are clean."))
     if not any(selectors.values()):
-        findings.append(Finding(module="email_security", severity="info",
+        findings.append(Finding(module="email_security", severity="info", kind="dkim-unknown",
                                 title="No DKIM key was found at the common selectors",
                                 detail="Selectors are not enumerable; this is not proof that DKIM is absent.",
                                 remediation="Confirm the selector with the mail provider and publish the key."))
     if not mta_sts:
-        findings.append(Finding(module="email_security", severity="info",
+        findings.append(Finding(module="email_security", severity="info", kind="mta-sts-missing",
                                 title="MTA-STS is not published",
                                 detail="Opportunistic TLS can be downgraded by an active attacker.",
                                 remediation="Publish an MTA-STS policy and a _mta-sts TXT record."))

@@ -108,14 +108,14 @@ def subdomain_takeover(ctx, results):
     findings: List[Finding] = []
     for entry in confirmed:
         findings.append(Finding(
-            module="subdomain_takeover", severity="high",
+            module="subdomain_takeover", kind="claim-possible", severity="high",
             title=f"{entry['service']} claim appears possible for {entry['name']}",
             detail=f"CNAME chain: {' → '.join(entry['chain'])}",
             evidence=str(entry.get("evidence", "")),
             remediation="Remove the DNS record or claim the resource; do not leave a dangling CNAME."))
     for entry in dangling:
         findings.append(Finding(
-            module="subdomain_takeover", severity="medium",
+            module="subdomain_takeover", kind="dangling-cname", severity="medium",
             title=f"Dangling CNAME to {entry['service']} for {entry['name']}",
             detail=f"CNAME chain: {' → '.join(entry['chain'])}",
             evidence=str(entry.get("evidence", "")),

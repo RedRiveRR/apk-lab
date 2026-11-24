@@ -102,13 +102,13 @@ def web_technologies(ctx):
     findings: List[Finding] = []
     server = headers.get("server", "")
     if any(character.isdigit() for character in server) and "/" in server:
-        findings.append(Finding(module="web_technologies", severity="low",
+        findings.append(Finding(module="web_technologies", kind="server-version", severity="low",
                                 title="The Server header discloses a version",
                                 detail=f"Server: {server[:120]}",
                                 remediation="Reduce the header to the product name, or remove it at the edge."))
     powered = headers.get("x-powered-by", "")
     if powered:
-        findings.append(Finding(module="web_technologies", severity="low",
+        findings.append(Finding(module="web_technologies", kind="powered-by", severity="low",
                                 title="The X-Powered-By header discloses the stack",
                                 detail=f"X-Powered-By: {powered[:120]}",
                                 remediation="Disable the header; it gives an attacker free reconnaissance."))

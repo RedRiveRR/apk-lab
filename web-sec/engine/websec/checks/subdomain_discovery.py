@@ -46,7 +46,7 @@ def subdomain_discovery(ctx):
     findings: List[Finding] = []
     if interesting:
         findings.append(Finding(
-            module="subdomain_discovery", severity="low",
+            module="subdomain_discovery", kind="non-production-names", severity="low",
             title="Non-production names appear in certificate transparency",
             detail=f"{len(interesting)} candidate(s): {', '.join(interesting[:6])}",
             evidence="\n".join(interesting[:20]),

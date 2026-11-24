@@ -38,13 +38,13 @@ def _findings_for(headers: Dict[str, str], cookies: List[Dict[str, object]],
                   tls, https_redirect: Optional[bool]) -> List[Finding]:
     found: List[Finding] = []
 
-    def add(severity: str, title: str, detail: str, remediation: str, evidence: str = "") -> None:
+    def add(kind: str, severity: str, title: str, detail: str, remediation: str, evidence: str = "") -> None:
         found.append(Finding(module="security_analysis", severity=severity, title=title,
-                             detail=detail, remediation=remediation, evidence=evidence))
+                             detail=detail, remediation=remediation, evidence=evidence, kind=kind))
 
     hsts = headers.get("strict-transport-security", "")
     if not hsts:
-        add("medium", "Strict-Transport-Security is missing",
+        add("hsts-missing", "medium", "Strict-Transport-Security is missing",
             "A browser that reaches the site over plain HTTP will not be upgraded on later visits.",
             "Send Strict-Transport-Security: max-age=31536000; includeSubDomains over HTTPS.")
     else:
@@ -57,105 +57,105 @@ def _findings_for(headers: Dict[str, str], cookies: List[Dict[str, object]],
                 except ValueError:
                     max_age = 0
         if max_age < 15552000:
-            add("low", "HSTS max-age is shorter than 180 days",
+            add("hsts-max-age", "low", "HSTS max-age is shorter than 180 days",
                 f"max-age={max_age} seconds.", "Raise max-age to at least 15552000.")
         if "includesubdomains" not in hsts.lower():
-            add("info", "HSTS does not cover subdomains",
+            add("hsts-subdomains", "info", "HSTS does not cover subdomains",
                 "includeSubDomains is absent.", "Add includeSubDomains once every subdomain is HTTPS-only.")
 
     csp = headers.get("content-security-policy", "")
     if not csp:
-        add("medium", "Content-Security-Policy is missing",
+        add("csp-missing", "medium", "Content-Security-Policy is missing",
             "Nothing limits which scripts, frames or connections the page may load.",
             "Start with a report-only policy, then enforce script-src 'self' and object-src 'none'.")
     else:
         lowered = csp.lower()
         if "unsafe-inline" in lowered or "unsafe-eval" in lowered:
-            add("low", "The CSP allows inline or evaluated script",
+            add("csp-inline", "low", "The CSP allows inline or evaluated script",
                 "'unsafe-inline' or 'unsafe-eval' is present, which weakens XSS protection.",
                 "Move inline handlers to files and use nonces or hashes.")
         if "*" in lowered and "default-src *" in lowered:
-            add("high", "The CSP allows any origin",
+            add("csp-wildcard", "high", "The CSP allows any origin",
                 "default-src * makes the policy close to decorative.",
                 "Replace the wildcard with the origins the page actually uses.")
 
     frame_options = headers.get("x-frame-options", "").lower()
     if "frame-ancestors" not in csp.lower() and frame_options not in ("deny", "sameorigin"):
-        add("medium", "Clickjacking protection is missing",
+        add("clickjacking-missing", "medium", "Clickjacking protection is missing",
             "Neither X-Frame-Options nor CSP frame-ancestors restricts framing.",
             "Send X-Frame-Options: DENY, or frame-ancestors 'none' in the CSP.")
 
     if headers.get("x-content-type-options", "").lower() != "nosniff":
-        add("low", "X-Content-Type-Options is not nosniff",
+        add("nosniff-missing", "low", "X-Content-Type-Options is not nosniff",
             "Browsers may guess a content type and execute an uploaded file as script.",
             "Send X-Content-Type-Options: nosniff.")
 
     referrer = headers.get("referrer-policy", "").lower()
     if not referrer:
-        add("low", "Referrer-Policy is missing",
+        add("referrer-missing", "low", "Referrer-Policy is missing",
             "Full URLs, including query strings, may leak to third parties.",
             "Send Referrer-Policy: strict-origin-when-cross-origin.")
     elif referrer in ("unsafe-url", "no-referrer-when-downgrade"):
-        add("low", "Referrer-Policy leaks cross-origin URLs",
+        add("referrer-leaks", "low", "Referrer-Policy leaks cross-origin URLs",
             f"Policy: {referrer}.", "Use strict-origin-when-cross-origin.")
 
     if not headers.get("permissions-policy"):
-        add("info", "Permissions-Policy is missing",
+        add("permissions-policy-missing", "info", "Permissions-Policy is missing",
             "Camera, microphone and geolocation remain available to any embedded frame.",
             "Send a Permissions-Policy that disables features the page does not use.")
 
     allow_origin = headers.get("access-control-allow-origin", "")
     allow_credentials = headers.get("access-control-allow-credentials", "").lower()
     if allow_origin == "*" and allow_credentials == "true":
-        add("high", "CORS allows any origin with credentials",
+        add("cors-wildcard-credentials", "high", "CORS allows any origin with credentials",
             "Access-Control-Allow-Origin: * together with credentials lets any site read responses.",
             "Echo only known origins from an allowlist and never combine * with credentials.")
     elif allow_origin == "*":
-        add("low", "CORS allows any origin",
+        add("cors-wildcard", "low", "CORS allows any origin",
             "Access-Control-Allow-Origin: * exposes the response to every site.",
             "Restrict the origin if the response is not meant to be public.")
 
     for cookie in cookies:
         name = str(cookie["name"])
         if not cookie["secure"]:
-            add("medium" if cookie["session"] else "low", f"Cookie {name} is sent without Secure",
+            add("cookie-secure", "medium" if cookie["session"] else "low", f"Cookie {name} is sent without Secure",
                 "It can travel over plain HTTP.", "Add the Secure attribute.")
         if not cookie["httponly"]:
-            add("medium" if cookie["session"] else "low", f"Cookie {name} is readable from JavaScript",
+            add("cookie-httponly", "medium" if cookie["session"] else "low", f"Cookie {name} is readable from JavaScript",
                 "The HttpOnly attribute is missing.", "Add HttpOnly to session cookies.")
         if str(cookie["samesite"]) == "none" and not cookie["secure"]:
-            add("high", f"Cookie {name} uses SameSite=None without Secure",
+            add("cookie-samesite-none", "high", f"Cookie {name} uses SameSite=None without Secure",
                 "Browsers reject the cookie, and it is exposed on plain HTTP.",
                 "Set Secure whenever SameSite=None is used.")
         elif not cookie["samesite"]:
-            add("low", f"Cookie {name} has no SameSite attribute",
+            add("cookie-samesite-absent", "low", f"Cookie {name} has no SameSite attribute",
                 "The browser default varies.", "Set SameSite=Lax or Strict.")
 
     if tls is None or getattr(tls, "error", ""):
-        add("medium", "TLS could not be inspected",
+        add("tls-uninspected", "medium", "TLS could not be inspected",
             f"{(getattr(tls, 'error', '') if tls is not None else 'no handshake')}",
             "Confirm the certificate chain and that 443 answers.")
     else:
         protocol = getattr(tls, "protocol", "") or ""
         if protocol in ("TLSv1", "TLSv1.1", "SSLv3", "SSLv2"):
-            add("high", "The endpoint negotiated an obsolete TLS version",
+            add("tls-obsolete", "high", "The endpoint negotiated an obsolete TLS version",
                 f"Negotiated {protocol}.", "Require TLS 1.2 or newer.")
         days_left = getattr(tls, "days_left", None)
         if days_left is not None and days_left < 0:
-            add("critical", "The TLS certificate has expired",
+            add("cert-expired", "critical", "The TLS certificate has expired",
                 f"Expired {abs(int(days_left))} days ago.", "Renew the certificate and automate renewal.")
         elif days_left is not None and days_left <= 14:
-            add("high", "The TLS certificate expires within 14 days",
+            add("cert-expiring", "high", "The TLS certificate expires within 14 days",
                 f"{int(days_left)} days left.", "Renew now and monitor expiry.")
         elif days_left is not None and days_left <= 30:
-            add("medium", "The TLS certificate expires within 30 days",
+            add("cert-expiring", "medium", "The TLS certificate expires within 30 days",
                 f"{int(days_left)} days left.", "Renew before the next release window.")
         if getattr(tls, "issuer", "") and getattr(tls, "issuer", "") == getattr(tls, "subject", ""):
-            add("medium", "The certificate is self-signed",
+            add("cert-self-signed", "medium", "The certificate is self-signed",
                 "No public CA vouches for this certificate.", "Use a certificate from a trusted CA.")
 
     if https_redirect is False:
-        add("medium", "Plain HTTP is served without a redirect to HTTPS",
+        add("no-https-redirect", "medium", "Plain HTTP is served without a redirect to HTTPS",
             "The first request can be intercepted before any HSTS policy applies.",
             "Redirect 80/tcp to https:// with a 301 and keep HSTS enabled.")
     return found

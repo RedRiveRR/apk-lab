@@ -24,13 +24,13 @@ def ssl_san(ctx):
     findings: List[Finding] = []
     if not sans:
         findings.append(Finding(
-            module="ssl_san", severity="medium",
+            module="ssl_san", kind="no-sans", severity="medium",
             title="The certificate has no subject alternative names",
             detail="Modern clients ignore the legacy common name.",
             remediation="Reissue the certificate with every served name in the SAN list."))
     if wildcard:
         findings.append(Finding(
-            module="ssl_san", severity="info",
+            module="ssl_san", kind="wildcard-name", severity="info",
             title="The certificate uses a wildcard name",
             detail=f"{', '.join(wildcard[:4])}",
             remediation="A wildcard is acceptable; confirm every matching name is intentional."))
@@ -40,7 +40,7 @@ def ssl_san(ctx):
     if unrelated:
         data["unrelated_names"] = unrelated[:20]
         findings.append(Finding(
-            module="ssl_san", severity="info",
+            module="ssl_san", kind="unrelated-names", severity="info",
             title="The certificate covers names outside this domain",
             detail=f"{len(unrelated)} name(s) are not under {ctx.target}.",
             evidence=", ".join(unrelated[:10]),

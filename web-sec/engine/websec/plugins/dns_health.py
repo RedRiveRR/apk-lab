@@ -27,19 +27,19 @@ def dns_health(ctx):
     findings: List[Finding] = []
     if len(nameservers) < 2:
         findings.append(Finding(
-            module="dns_health", severity="medium",
+            module="dns_health", kind="single-nameserver", severity="medium",
             title="The zone is served by a single nameserver",
             detail=f"{len(nameservers)} NS record(s).",
             remediation="Publish at least two nameservers on different networks."))
     if not caa:
         findings.append(Finding(
-            module="dns_health", severity="low",
+            module="dns_health", kind="no-caa", severity="low",
             title="No CAA record restricts certificate issuance",
             detail="Any public CA may issue a certificate for this name.",
             remediation="Add CAA records naming only the CAs you use."))
     if not ds:
         findings.append(Finding(
-            module="dns_health", severity="info",
+            module="dns_health", kind="no-dnssec", severity="info",
             title="The zone is not DNSSEC-signed",
             detail="No DS record was returned for the delegation.",
             remediation="Sign the zone if your resolver and registrar support it."))

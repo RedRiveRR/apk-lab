@@ -27,7 +27,7 @@ def dns_zone_transfer(ctx):
     for outcome in results:
         if outcome.get("rcode") == 0 and int(outcome.get("records") or 0) > 0:
             findings.append(Finding(
-                module="dns_zone_transfer", severity="critical",
+                module="dns_zone_transfer", kind="axfr-allowed", severity="critical",
                 title=f"Zone transfer is allowed by {outcome['server']}",
                 detail=f"{outcome['records']} records were returned without authentication.",
                 remediation="Restrict AXFR to the secondary nameservers by address."))

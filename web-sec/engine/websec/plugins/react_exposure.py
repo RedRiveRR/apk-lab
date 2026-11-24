@@ -59,13 +59,13 @@ def react_exposure(ctx):
     findings: List[Finding] = []
     if development:
         findings.append(Finding(
-            module="react_exposure", severity="medium",
+            module="react_exposure", kind="dev-build", severity="medium",
             title="A React development build is served",
             detail=f"Markers present: {', '.join(development[:3])}",
             remediation="Build with NODE_ENV=production and remove development bundles from the origin."))
     if keys:
         findings.append(Finding(
-            module="react_exposure", severity="high",
+            module="react_exposure", kind="sensitive-keys", severity="high",
             title="Framework data contains sensitive key names",
             detail=f"{len(keys)} key(s) look like secrets: {', '.join(keys[:5])}",
             evidence="\n".join(keys[:10]),

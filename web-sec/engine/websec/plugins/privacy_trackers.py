@@ -50,7 +50,7 @@ def privacy_trackers(ctx):
                       if category in ("advertising", "session replay"))
     if advertising >= 3:
         findings.append(Finding(
-            module="privacy_trackers", severity="low",
+            module="privacy_trackers", kind="tracker-hosts", severity="low",
             title="The page loads several advertising or session-replay hosts",
             detail=f"{advertising} such hosts are referenced.",
             remediation="Load them only after consent and document them in the privacy notice."))

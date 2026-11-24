@@ -37,7 +37,7 @@ def cloud_storage(ctx):
     findings: List[Finding] = []
     if buckets:
         findings.append(Finding(
-            module="cloud_storage", severity="info",
+            module="cloud_storage", kind="bucket-reference", severity="info",
             title="The page references cloud storage buckets",
             detail=", ".join(f"{name} ({provider})" for name, provider in list(buckets.items())[:5]),
             remediation="Confirm each bucket is intended to be public and carries no sensitive objects."))

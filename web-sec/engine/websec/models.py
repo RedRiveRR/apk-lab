@@ -31,7 +31,12 @@ def severity_rank(severity: str) -> int:
 
 @dataclass(frozen=True)
 class Finding:
-    """One observation with a severity and, when possible, a fix."""
+    """One observation with a severity and, when possible, a fix.
+
+    ``kind`` is the stable rule identity for SARIF and diffing: it survives
+    wording changes to ``title``. Checks that do not declare one fall back to
+    the title slug.
+    """
 
     module: str
     severity: str
@@ -40,12 +45,14 @@ class Finding:
     evidence: str = ""
     remediation: str = ""
     refs: Tuple[str, ...] = ()
+    kind: str = ""
 
     def __post_init__(self) -> None:
         if self.severity not in SEVERITY_RANK:
             raise ValueError(f"unknown severity: {self.severity!r}")
         for name, limit in (("title", MAX_TITLE), ("detail", MAX_TEXT),
-                            ("evidence", MAX_EVIDENCE), ("remediation", MAX_TEXT)):
+                            ("evidence", MAX_EVIDENCE), ("remediation", MAX_TEXT),
+                            ("kind", 64)):
             object.__setattr__(self, name, clamp(getattr(self, name), limit))
         object.__setattr__(self, "module", clamp(self.module, 64))
         object.__setattr__(self, "refs", tuple(clamp(ref, 500) for ref in self.refs)[:8])
@@ -65,6 +72,7 @@ class Finding:
             "evidence": self.evidence,
             "remediation": self.remediation,
             "refs": list(self.refs),
+            "kind": self.kind,
         }
 
 

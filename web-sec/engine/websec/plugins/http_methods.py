@@ -24,13 +24,13 @@ def http_methods(ctx):
     risky = [method for method in declared if method in RISKY]
     if risky:
         findings.append(Finding(
-            module="http_methods", severity="medium",
+            module="http_methods", kind="write-methods", severity="medium",
             title="The server advertises write or WebDAV methods",
             detail=f"Allow: {', '.join(declared)}",
             remediation="Disable the methods the application does not need at the server or edge."))
     if trace.status == 200 and trace.body:
         findings.append(Finding(
-            module="http_methods", severity="medium",
+            module="http_methods", kind="trace-echo", severity="medium",
             title="TRACE is accepted and echoes the request",
             detail="TRACE can be abused in cross-site tracing setups.",
             remediation="Disable TRACE in the web server configuration."))

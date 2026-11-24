@@ -49,7 +49,7 @@ def exposed_files(ctx):
     findings: List[Finding] = []
     for entry in found:
         findings.append(Finding(
-            module="exposed_files", severity=str(entry["severity"]),
+            module="exposed_files", kind=str(entry["description"]), severity=str(entry["severity"]),
             title=str(entry["description"]),
             detail=f"{entry['path']} answered 200 with {entry['bytes']} bytes.",
             evidence=str(entry["path"]),

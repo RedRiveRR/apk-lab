@@ -75,7 +75,7 @@ def lookalike_domains(ctx):
     findings: List[Finding] = []
     for entry in registered:
         findings.append(Finding(
-            module="lookalike_domains", severity="medium",
+            module="lookalike_domains", kind="lookalike-resolves", severity="medium",
             title=f"Lookalike domain resolves: {entry['domain']}",
             detail=f"Addresses: {', '.join(entry['addresses'])}",
             remediation="Monitor or defensively register the variant; do not browse to it from this lab."))

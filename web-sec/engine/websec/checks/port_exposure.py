@@ -75,7 +75,7 @@ def port_exposure(ctx):
         entries.append({"port": port, "service": service, "banner": result.banner[:200]})
         if port in DATABASES:
             findings.append(Finding(
-                module="port_exposure", severity="high",
+                module="port_exposure", kind="database-exposed", severity="high",
                 title=f"{DATABASES[port]} is reachable on port {port}",
                 detail="A datastore should not answer on the public edge.",
                 evidence=result.banner[:200],
@@ -83,20 +83,20 @@ def port_exposure(ctx):
         elif port in PLAINTEXT:
             severity = "high" if port in (21, 23) else "medium"
             findings.append(Finding(
-                module="port_exposure", severity=severity,
+                module="port_exposure", kind="plaintext-service", severity=severity,
                 title=f"{PLAINTEXT[port]} is reachable on port {port}",
                 detail="Credentials and contents can cross the network in clear text.",
                 evidence=result.banner[:200],
                 remediation=f"Disable {PLAINTEXT[port]} or move it behind TLS and a VPN."))
         elif port in ADMIN_PORTS:
             findings.append(Finding(
-                module="port_exposure", severity="medium",
+                module="port_exposure", kind="admin-interface", severity="medium",
                 title=f"{ADMIN_PORTS[port]} answers on port {port}",
                 detail="An administrative interface is exposed to the internet.",
                 evidence=result.banner[:200],
                 remediation="Restrict the port to an allowlist or a VPN."))
         elif port == 22:
-            findings.append(Finding(module="port_exposure", severity="info",
+            findings.append(Finding(module="port_exposure", kind="ssh-exposed", severity="info",
                                     title="SSH is reachable on port 22",
                                     detail="Expose it only to the addresses that administer the host.",
                                     remediation="Restrict SSH to an allowlist and disable password auth."))
@@ -113,7 +113,7 @@ def port_exposure(ctx):
             "cve_lookup": bool(ctx.options.cve_lookup)}
     for cve in cves:
         findings.append(Finding(
-            module="port_exposure", severity="low",
+            module="port_exposure", kind="cve-match", severity="low",
             title=f"{cve['id']} matches the service on port {cve['port']}",
             detail=str(cve["description"])[:600],
             remediation="Confirm the version, then patch or upgrade the service.",

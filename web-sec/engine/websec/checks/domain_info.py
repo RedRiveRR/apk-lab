@@ -51,24 +51,24 @@ def domain_info(ctx):
         data["expires"] = expiry.date().isoformat()
         data["days_left"] = days
         if days < 0:
-            findings.append(Finding(module="domain_info", severity="critical",
+            findings.append(Finding(module="domain_info", severity="critical", kind="registration-expired",
                                     title="The domain registration has expired",
                                     detail=f"WHOIS reports an expiry date of {data['expires']}.",
                                     remediation="Renew the domain now; an expired registration can be taken over."))
         elif days <= 30:
-            findings.append(Finding(module="domain_info", severity="high",
+            findings.append(Finding(module="domain_info", severity="high", kind="registration-expiring",
                                     title="The domain registration expires within 30 days",
                                     detail=f"Expiry {data['expires']} ({days} days).",
                                     remediation="Renew the registration and enable auto-renew."))
         elif days <= 90:
-            findings.append(Finding(module="domain_info", severity="medium",
+            findings.append(Finding(module="domain_info", severity="medium", kind="registration-expiring",
                                     title="The domain registration expires within 90 days",
                                     detail=f"Expiry {data['expires']} ({days} days).",
                                     remediation="Renew the registration and enable auto-renew."))
     status = " ".join(whois.all("status") + whois.all("domain status")).lower()
     for marker in _BAD_STATUS:
         if marker in status:
-            findings.append(Finding(module="domain_info", severity="high",
+            findings.append(Finding(module="domain_info", severity="high", kind="registry-status",
                                     title=f"The registry status contains {marker}",
                                     detail="The domain is suspended or slated for deletion.",
                                     remediation="Contact the registrar and resolve the suspension."))
@@ -76,7 +76,7 @@ def domain_info(ctx):
     nameservers = whois.all("name server") + whois.all("nserver")
     data["nameservers"] = sorted({server.split()[0].lower() for server in nameservers if server})[:12]
     if not data["nameservers"]:
-        findings.append(Finding(module="domain_info", severity="medium",
+        findings.append(Finding(module="domain_info", severity="medium", kind="no-nameservers",
                                 title="No nameservers are published in WHOIS",
                                 detail="An empty delegation can indicate a lapsed registration.",
                                 remediation="Confirm the delegation with the registrar."))

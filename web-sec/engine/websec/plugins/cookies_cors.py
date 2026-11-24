@@ -36,19 +36,19 @@ def cookies_cors(ctx):
     findings: List[Finding] = []
     if reflected and allow_credentials == "true":
         findings.append(Finding(
-            module="cookies_cors", severity="high",
+            module="cookies_cors", kind="cors-credentials-reflection", severity="high",
             title="CORS reflects an arbitrary origin together with credentials",
             detail=f"{PROBE_ORIGIN} is echoed in Access-Control-Allow-Origin with credentials allowed.",
             remediation="Check the Origin against an allowlist; never reflect it blindly."))
     elif reflected:
         findings.append(Finding(
-            module="cookies_cors", severity="medium",
+            module="cookies_cors", kind="cors-origin-reflection", severity="medium",
             title="CORS reflects an arbitrary origin",
             detail=f"{PROBE_ORIGIN} is echoed in Access-Control-Allow-Origin.",
             remediation="Answer only the origins that need the response."))
     elif allow_origin == "*" and allow_credentials == "true":
         findings.append(Finding(
-            module="cookies_cors", severity="high",
+            module="cookies_cors", kind="cors-wildcard-credentials", severity="high",
             title="CORS combines a wildcard with credentials",
             detail="Browsers reject this combination, and the intent is unsafe.",
             remediation="Use an explicit allowlist."))

@@ -18,19 +18,19 @@ def tls_health(ctx):
     legacy = [name for name in supported if name in ("TLSv1", "TLSv1_1")]
     if legacy:
         findings.append(Finding(
-            module="tls_health", severity="high",
+            module="tls_health", kind="obsolete-versions", severity="high",
             title="Obsolete TLS versions are accepted",
             detail=f"{', '.join(legacy)} still complete a handshake.",
             remediation="Set the minimum version to TLS 1.2 in the server configuration."))
     if supported and "TLSv1_3" not in supported:
         findings.append(Finding(
-            module="tls_health", severity="low",
+            module="tls_health", kind="no-tls13", severity="low",
             title="TLS 1.3 is not accepted",
             detail=f"Supported: {', '.join(supported)}",
             remediation="Enable TLS 1.3 when the TLS stack supports it."))
     if not supported:
         findings.append(Finding(
-            module="tls_health", severity="medium",
+            module="tls_health", kind="no-handshake", severity="medium",
             title="No TLS version completed a handshake",
             detail="The probe could not agree a protocol with 443/tcp.",
             remediation="Confirm that the endpoint serves TLS on 443."))

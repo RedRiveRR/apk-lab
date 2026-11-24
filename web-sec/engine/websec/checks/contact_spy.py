@@ -78,13 +78,13 @@ def contact_spy(ctx):
     free = [address for address in emails if address.rsplit("@", 1)[-1] in FREE_MAIL]
     if free:
         findings.append(Finding(
-            module="contact_spy", severity="low",
+            module="contact_spy", kind="personal-mailboxes", severity="low",
             title="Personal mailboxes are published on the site",
             detail=f"{len(free)} address(es) use a free mail provider: {', '.join(free[:3])}.",
             remediation="Use role addresses and a contact form; remove personal mailboxes."))
     if len(emails) > 5:
         findings.append(Finding(
-            module="contact_spy", severity="info",
+            module="contact_spy", kind="addresses-exposed", severity="info",
             title="Many email addresses are exposed",
             detail=f"{len(emails)} distinct addresses across {len(pages)} page(s).",
             remediation="Confirm each address must be public."))

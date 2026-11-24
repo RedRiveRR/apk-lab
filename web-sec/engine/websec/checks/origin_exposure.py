@@ -62,7 +62,7 @@ def origin_exposure(ctx, results):
     findings: List[Finding] = []
     if exposed:
         findings.append(Finding(
-            module="origin_exposure", severity="medium",
+            module="origin_exposure", kind="origin-reachable", severity="medium",
             title="A hostname answers without the CDN in front of it",
             detail=f"{len(exposed)} candidate(s) answered directly; the origin may be reachable by address.",
             evidence=", ".join(f"{entry['name']} → {', '.join(entry['addresses'])}" for entry in exposed[:5]),

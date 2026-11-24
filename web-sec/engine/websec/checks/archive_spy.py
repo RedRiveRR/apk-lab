@@ -45,7 +45,7 @@ def archive_spy(ctx):
     findings: List[Finding] = []
     if records:
         findings.append(Finding(
-            module="archive_spy", severity="medium",
+            module="archive_spy", kind="sensitive-archives", severity="medium",
             title="Archived URLs suggest exposed configuration or backups",
             detail=f"{len(records)} archived URL(s) match sensitive names.",
             evidence="\n".join(record["url"] for record in records[:5]),

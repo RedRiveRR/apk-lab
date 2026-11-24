@@ -82,21 +82,21 @@ def content_scan(ctx):
     findings: List[Finding] = []
     for entry in secrets.values():
         findings.append(Finding(
-            module="content_scan", severity=str(entry["severity"]),
+            module="content_scan", kind=str(entry["kind"]), severity=str(entry["severity"]),
             title=f"{entry['kind']} appears in served content",
             detail=f"{entry['count']} occurrence(s) in {', '.join(entry['where'])}.",
             evidence=", ".join(str(sample) for sample in entry["samples"]),
             remediation=str(entry["remediation"])))
     if exposed_maps:
         findings.append(Finding(
-            module="content_scan", severity="medium",
+            module="content_scan", kind="source-maps", severity="medium",
             title="Source maps are publicly readable",
             detail=f"{len(exposed_maps)} linked source map(s) answered 200.",
             evidence=", ".join(exposed_maps),
             remediation="Disable source maps in production builds, or restrict them to internal users."))
     if next_data:
         findings.append(Finding(
-            module="content_scan", severity="info",
+            module="content_scan", kind="next-data", severity="info",
             title="The page ships a __NEXT_DATA__ blob",
             detail="Server-rendered props are readable by anyone; confirm nothing sensitive is included.",
             remediation="Keep secrets out of getServerSideProps/getStaticProps payloads."))

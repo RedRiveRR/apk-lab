@@ -10,6 +10,7 @@ import textwrap
 import pytest
 
 from conftest import ZONE, FakeDns, FakeHttp, FakeTls, FakeWhois, make_context, page
+from websec.report import rule_id
 from websec import grade, registry, report
 from websec.config import Options, normalize_target
 from websec.net.dns import DnsError, build_query, encode_name, parse_message
@@ -231,3 +232,10 @@ def test_guard_refuses_an_undeclared_host(tmp_path):
 
 def test_allow_all_is_explicitly_a_fixture():
     assert AllowAll().require("host", "example.com")["allowed"] is True
+
+
+def test_rule_id_prefers_the_frozen_kind():
+    assert rule_id({"module": "security_analysis", "kind": "csp-missing",
+                    "title": "Renamed CSP finding"}) == "WEBSEC/security_analysis/csp-missing"
+    assert rule_id({"module": "security_analysis", "title": "No kind declared"}) == \
+        "WEBSEC/security_analysis/no-kind-declared"

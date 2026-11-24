@@ -37,7 +37,7 @@ def dns_records(ctx):
         chain = ctx.dns.cname_chain(ctx.target)
         data["cname_chain"] = chain
         findings.append(Finding(
-            module="dns_records", severity="high",
+            module="dns_records", kind="no-address", severity="high",
             title="The host has no A or AAAA record",
             detail="The name does not resolve to an address" + (f"; CNAME chain: {' → '.join(chain)}" if chain else "."),
             remediation="Publish the address record the service actually uses, or remove the stale name."))
@@ -45,7 +45,7 @@ def dns_records(ctx):
     if chain:
         data["cname_chain"] = chain
         if len(chain) > 2:
-            findings.append(Finding(module="dns_records", severity="info",
+            findings.append(Finding(module="dns_records", kind="cname-chain", severity="info",
                                     title="The CNAME chain has more than two hops",
                                     detail=" → ".join([ctx.target] + chain),
                                     remediation="Flatten the chain to reduce resolution latency and failure points."))

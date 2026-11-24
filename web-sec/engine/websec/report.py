@@ -36,7 +36,10 @@ def slug(text: str) -> str:
 
 
 def rule_id(finding: Dict[str, object]) -> str:
-    return f"WEBSEC/{slug(str(finding['module']))}/{slug(str(finding['title']))}"
+    """One frozen rule per module + kind; findings without a kind keep the title slug."""
+    kind = str(finding.get("kind") or "").strip()
+    suffix = slug(kind) if kind else slug(str(finding["title"]))
+    return f"WEBSEC/{slug(str(finding['module']))}/{suffix}"
 
 
 def to_json(document: Dict[str, object], indent: Optional[int] = 2) -> str:

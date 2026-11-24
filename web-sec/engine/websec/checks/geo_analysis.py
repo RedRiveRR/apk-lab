@@ -46,12 +46,12 @@ def geo_analysis(ctx):
     data = {"addresses": entries, "hosting": sorted(hints)}
     findings: List[Finding] = []
     if not addresses:
-        findings.append(Finding(module="geo_analysis", severity="high",
+        findings.append(Finding(module="geo_analysis", kind="no-address", severity="high",
                                 title="The target does not resolve to any address",
                                 detail=f"No A or AAAA answer for {ctx.target}.",
                                 remediation="Publish DNS records or correct the target name."))
     elif not any(entry["public"] for entry in entries):
-        findings.append(Finding(module="geo_analysis", severity="info",
+        findings.append(Finding(module="geo_analysis", kind="private-address", severity="info",
                                 title="The target resolves only to private or loopback addresses",
                                 detail=", ".join(str(entry["address"]) for entry in entries),
                                 remediation="Expected for an internal lab target; confirm the exposure you intend to test."))

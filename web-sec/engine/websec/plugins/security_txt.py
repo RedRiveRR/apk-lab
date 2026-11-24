@@ -33,7 +33,7 @@ def security_txt(ctx):
             "policy": (parsed.get("policy") or [""])[0]}
     findings: List[Finding] = []
     if not contacts:
-        findings.append(Finding(module="security_txt", severity="low",
+        findings.append(Finding(module="security_txt", severity="low", kind="no-contact",
                                 title="security.txt has no Contact field",
                                 detail="A researcher cannot report a vulnerability through the declared channel.",
                                 remediation="Add at least one Contact (mailto: or https: URL)."))
@@ -41,17 +41,17 @@ def security_txt(ctx):
         try:
             when = datetime.fromisoformat(expires.replace("Z", "+00:00"))
             if when < datetime.now(timezone.utc):
-                findings.append(Finding(module="security_txt", severity="low",
+                findings.append(Finding(module="security_txt", severity="low", kind="expired",
                                         title="security.txt has expired",
                                         detail=f"Expires {expires}.",
                                         remediation="Refresh the file before its expiry date."))
         except ValueError:
-            findings.append(Finding(module="security_txt", severity="info",
+            findings.append(Finding(module="security_txt", severity="info", kind="expires-unreadable",
                                     title="security.txt has an unreadable Expires value",
                                     detail=expires[:100],
                                     remediation="Use an ISO 8601 timestamp."))
     else:
-        findings.append(Finding(module="security_txt", severity="low",
+        findings.append(Finding(module="security_txt", severity="low", kind="no-expires",
                                 title="security.txt has no Expires field",
                                 detail="RFC 9116 requires one.",
                                 remediation="Add Expires with an ISO 8601 date."))

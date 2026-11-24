@@ -4,11 +4,14 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from types import SimpleNamespace
 
 import pytest
 
+from websec import cli as websec_cli
 from websec.cli import main
 from websec.history import History
+from websec.scope import ScopeRefused
 
 
 def run(argv):
@@ -76,6 +79,30 @@ def test_history_entries_carry_the_report_name(tmp_path, monkeypatch):
     code, out, _ = run(["history", "--target", "example.test", "--json"])
     assert code == 0
     assert json.loads(out)["entries"][0]["name"] == paths["name"]
+
+
+def test_bulk_csv_and_worst_grade_exit_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
+    targets = tmp_path / "targets.txt"
+    targets.write_text("a.test\nb.test\nc.test\n", encoding="utf-8")
+    grades = {"a.test": (96, "A"), "b.test": (72, "C")}
+
+    def fake_run_scan(options):
+        if options.target == "c.test":
+            raise ScopeRefused("c.test", "the target is outside the declared scope")
+        score, grade = grades[options.target]
+        return SimpleNamespace(score=score, grade=grade, summary={"total": 1})
+
+    monkeypatch.setattr(websec_cli, "run_scan", fake_run_scan)
+    code, out, _ = run(["bulk", str(targets), "--csv", "--preset", "quick"])
+    assert code == 3
+    lines = out.strip().splitlines()
+    assert lines[0] == "target,grade,score,critical,high,medium,low,info,total,error"
+    assert "a.test,A,96,0,0,0,0,0,1," in out
+    assert "b.test,C,72,0,0,0,0,0,1," in out
+    assert "c.test,,,0,0,0,0,0,0,the target is outside the declared scope" in out
+    code, out, _ = run(["bulk", str(targets), "--preset", "quick"])
+    assert code == 3
 
 
 @pytest.mark.parametrize("argv", [["scan"], ["nonsense"]])

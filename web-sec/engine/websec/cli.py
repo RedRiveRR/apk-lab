@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import shutil
@@ -18,6 +19,12 @@ from .scope import Guard, ScopeRefused, describe
 from .version import VERSION
 
 MAX_BULK = 50
+_GRADE_EXIT = {"A": 0, "B": 0, "C": 1, "D": 2, "F": 3}
+
+
+def _grade_exit(grade: str) -> int:
+    """Worst-grade exit code: 0 through B passes, 1 C, 2 D, 3 F; errors stay 3."""
+    return _GRADE_EXIT.get(str(grade or "")[:1].upper(), 3)
 
 
 def _load_catalogue() -> List[Dict[str, object]]:
@@ -197,12 +204,28 @@ def bulk(args) -> int:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for entry in pool.map(one, targets):
             results.append(entry)
+    worst = 0
+    for entry in results:
+        code = 3 if entry.get("error") else _grade_exit(str(entry.get("grade", "")))
+        worst = max(worst, code)
     if args.out:
         os.makedirs(args.out, mode=0o700, exist_ok=True)
         for entry in results:
             name = os.path.join(args.out, f"{slug(str(entry['target']))}.json")
             with open(name, "w", encoding="utf-8") as handle:
                 json.dump(entry, handle, indent=2)
+    if args.csv:
+        writer = csv.writer(sys.stdout)
+        writer.writerow(["target", "grade", "score", "critical", "high", "medium", "low", "info", "total", "error"])
+        for entry in results:
+            summary = entry.get("summary") or {}
+            writer.writerow([
+                entry.get("target"), entry.get("grade") or "", entry.get("score", "") if entry.get("grade") else "",
+                summary.get("critical", 0), summary.get("high", 0), summary.get("medium", 0),
+                summary.get("low", 0), summary.get("info", 0), summary.get("total", 0),
+                entry.get("error", ""),
+            ])
+        return worst
     if args.json:
         _print(json.dumps({"targets": results, "count": len(results)}, indent=2))
         return 0
@@ -213,7 +236,7 @@ def bulk(args) -> int:
         else:
             _print(f"{entry['target']:<40} {entry['grade']:<6} {entry['score']:<6} "
                    f"{(entry.get('summary') or {}).get('total', 0)}")
-    return 0
+    return worst
 
 
 def report(args) -> int:
@@ -309,6 +332,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_bulk.add_argument("--preset", default="quick", choices=("quick", "standard", "full"))
     p_bulk.add_argument("--active", action="store_true")
     p_bulk.add_argument("--json", action="store_true")
+    p_bulk.add_argument("--csv", action="store_true",
+                        help="write a CSV summary and exit with the worst grade "
+                             "(0 through B, 1 C, 2 D, 3 F or refused)")
     p_bulk.add_argument("--out", default="")
     p_bulk.add_argument("--timeout", type=float, default=6.0)
     p_bulk.set_defaults(func=bulk)

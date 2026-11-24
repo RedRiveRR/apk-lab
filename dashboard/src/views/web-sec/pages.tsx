@@ -10,7 +10,7 @@ import {
   XIcon
 } from "@phosphor-icons/react";
 import { AppShell } from "../../shell/app-shell";
-import { Badge, CopyButton, Empty, PageHead, Section } from "../../components/ui";
+import { Badge, CopyButton, Empty, Modal, PageHead, Section } from "../../components/ui";
 import {
   api,
   type WebSecFinding,
@@ -106,6 +106,7 @@ export default function WebSecLabPage() {
   const [preset, setPreset] = useState("standard");
   const [scheme, setScheme] = useState<"http" | "https">("https");
   const [active, setActive] = useState(false);
+  const [confirmActive, setConfirmActive] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<WebSecJob | null>(null);
@@ -181,6 +182,13 @@ export default function WebSecLabPage() {
     return filter === "all" ? list : list.filter((finding) => finding.severity === filter);
   }, [report, filter]);
 
+  // The intrusive checks this scan could touch: the explicit selection, or every
+  // active module the catalogue offers when the preset picks the set.
+  const intrusiveModules = useMemo(() => {
+    const picked = selected.length ? selected : null;
+    return modules.filter((module) => module.active && (!picked || picked.includes(module.id)));
+  }, [modules, selected]);
+
   const toggleModule = (id: string) => {
     setOpenModules((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -189,13 +197,28 @@ export default function WebSecLabPage() {
   const start = async () => {
     setError("");
     setViewer(null);
+    if (active) {
+      if (intrusiveModules.length) {
+        setConfirmActive(true);
+        return;
+      }
+      // The catalogue offers no intrusive check for this selection, so there is
+      // nothing to confirm; run it passively rather than silently going active.
+      await runScan(false);
+      return;
+    }
+    await runScan(false);
+  };
+
+  const runScan = async (intrusive: boolean) => {
+    setConfirmActive(false);
     setBusy(true);
     try {
       const created = await api.websecStart({
         target: target.trim(),
         preset,
         scheme,
-        active,
+        active: intrusive,
         modules: selected.length ? selected : undefined
       });
       setJob(created);
@@ -375,6 +398,43 @@ export default function WebSecLabPage() {
           ) : null}
           {job?.state === "error" ? <p role="alert" className="mt-3 text-sm text-(--iux-danger)">The scan failed. {job.error}</p> : null}
         </Section>
+
+        {confirmActive ? (
+          <Modal
+            title="Confirm the active scan"
+            description="Only with written authorization for this host."
+            onClose={() => setConfirmActive(false)}
+          >
+            <div className="space-y-3 text-sm">
+              <p>The scan would run these checks actively:</p>
+              <ul className="list-disc space-y-1 pl-5">
+                {intrusiveModules.map((module) => (
+                  <li key={module.id}>
+                    {module.label}
+                    <span className="ml-1 font-mono text-xs text-(--iux-muted-foreground)">({module.id})</span>
+                  </li>
+                ))}
+              </ul>
+              {scopeNote ? <p className="text-xs text-(--iux-muted-foreground)">{scopeNote}</p> : null}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => runScan(true)}
+                  className="rounded bg-[#f36c21] px-3 py-1.5 text-sm font-semibold text-white"
+                >
+                  Run with intrusive checks
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runScan(false)}
+                  className="rounded border border-(--iux-border) px-3 py-1.5 text-sm"
+                >
+                  Scan passively
+                </button>
+              </div>
+            </div>
+          </Modal>
+        ) : null}
 
         {report ? (
           <Section

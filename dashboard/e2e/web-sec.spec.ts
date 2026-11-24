@@ -79,6 +79,9 @@ test("a ready lab scans a target and shows the graded report", async ({ page }) 
   await page.getByRole("main").getByLabel("Target").fill("example.test");
   await page.getByRole("main").getByLabel("Allow intrusive checks").check();
   await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByRole("dialog").getByText("Port exposure")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("websec-test")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Run with intrusive checks" }).click();
 
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
   await expect(page.getByRole("main").getByText("95/100")).toBeVisible();

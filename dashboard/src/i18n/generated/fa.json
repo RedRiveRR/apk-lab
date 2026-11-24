@@ -3027,5 +3027,9 @@
   "JSON": "JSON",
   "SARIF": "SARIF",
   "HTML": "HTML",
-  "Markdown": "Markdown"
+  "Markdown": "Markdown",
+  "Confirm the active scan": "اسکن فعال را تأیید کنید",
+  "The scan would run these checks actively:": "اسکن این بررسی‌ها را به‌صورت فعال اجرا می‌کند:",
+  "Run with intrusive checks": "با بررسی‌های مهاجم اجرا کن",
+  "Scan passively": "اسکن منفعل"
 }

@@ -6,6 +6,9 @@ their copyright and permission notice travels with substantial portions of the
 port. The mapping stays in [knowledge/upstream.md](knowledge/upstream.md), and the
 commit that introduces the engine names it.
 
+For locations, the state of the branch and the continuation checklist, read
+[docs/HANDOFF-web-sec-lab.md](../docs/HANDOFF-web-sec-lab.md).
+
 ## Feature coverage
 
 ### WebAnalyzer

@@ -3023,5 +3023,9 @@
   "Wildcard names": "Wildcard-Namen",
   "Words": "Wörter",
   "X-Powered-By": "X-Powered-By",
-  "robots.txt": "robots.txt"
+  "robots.txt": "robots.txt",
+  "JSON": "JSON",
+  "SARIF": "SARIF",
+  "HTML": "HTML",
+  "Markdown": "Markdown"
 }

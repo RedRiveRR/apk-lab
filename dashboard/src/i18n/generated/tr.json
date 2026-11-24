@@ -3023,5 +3023,9 @@
   "Wildcard names": "Wildcard isimler",
   "Words": "Kelime",
   "X-Powered-By": "X-Powered-By",
-  "robots.txt": "robots.txt"
+  "robots.txt": "robots.txt",
+  "JSON": "JSON",
+  "SARIF": "SARIF",
+  "HTML": "HTML",
+  "Markdown": "Markdown"
 }

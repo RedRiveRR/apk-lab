@@ -10,7 +10,7 @@ import {
   XIcon
 } from "@phosphor-icons/react";
 import { AppShell } from "../../shell/app-shell";
-import { Badge, Empty, PageHead, Section } from "../../components/ui";
+import { Badge, CopyButton, Empty, PageHead, Section } from "../../components/ui";
 import {
   api,
   type WebSecFinding,
@@ -32,6 +32,14 @@ const SEVERITY_CLASS: Record<WebSecSeverity, string> = {
   info: "text-(--iux-muted-foreground)"
 };
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+const EXPORT_MIME: Record<string, string> = {
+  json: "application/json",
+  sarif: "application/json",
+  html: "text/html",
+  markdown: "text/markdown"
+};
+const EXPORT_EXTENSION: Record<string, string> = { json: "json", sarif: "sarif", html: "html", markdown: "md" };
 
 function gradeClass(grade: string): string {
   if (grade.startsWith("A")) return "text-(--iux-success)";
@@ -227,12 +235,13 @@ export default function WebSecLabPage() {
     if (!current) return;
     try {
       const value = await api.websecReport(current, name, format);
-      const extension = format === "markdown" ? "md" : format;
-      const blob = new Blob([value.content], { type: format === "html" ? "text/html" : "application/json" });
+      const mime = EXPORT_MIME[format] ?? "application/octet-stream";
+      const extension = EXPORT_EXTENSION[format] ?? format;
+      const blob = new Blob([value.content], { type: mime });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${current}.${extension}`;
+      anchor.download = `${current}.${name.replace(/\.json$/, "")}.${extension}`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (reason) {
@@ -460,8 +469,11 @@ export default function WebSecLabPage() {
                   <button type="button" className="underline" onClick={() => openReport(entry.name, "markdown")}>Open</button>
                   <button type="button" className="inline-flex items-center gap-1 underline" onClick={() => download(entry.name, "json")}>
                     <DownloadSimpleIcon size={12} />
-                    Download
+                    JSON
                   </button>
+                  <button type="button" className="underline" onClick={() => download(entry.name, "sarif")}>SARIF</button>
+                  <button type="button" className="underline" onClick={() => download(entry.name, "html")}>HTML</button>
+                  <button type="button" className="underline" onClick={() => download(entry.name, "markdown")}>Markdown</button>
                 </li>
               ))}
             </ul>
@@ -472,9 +484,12 @@ export default function WebSecLabPage() {
             <div className="mt-3">
               <div className="mb-1 flex items-center justify-between text-xs text-(--iux-muted-foreground)">
                 <span className="font-mono">{viewer.name} · {viewer.format}</span>
-                <button type="button" aria-label="Close" onClick={() => setViewer(null)}>
-                  <XIcon size={14} />
-                </button>
+                <span className="flex items-center gap-2">
+                  <CopyButton text={viewer.content} />
+                  <button type="button" aria-label="Close" onClick={() => setViewer(null)}>
+                    <XIcon size={14} />
+                  </button>
+                </span>
               </div>
               <pre className="max-h-96 overflow-auto rounded border border-(--iux-border) bg-(--iux-bg) p-2 text-xs whitespace-pre-wrap">
                 {viewer.content}

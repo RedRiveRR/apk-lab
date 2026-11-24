@@ -178,3 +178,36 @@ test("check rows open drill-down panels with the module's own data", async ({ pa
   await expect(headersRegion.getByText("sid")).toBeVisible();
   await expect(headersRegion.getByText("Redirects to https")).toBeVisible();
 });
+
+test("stored reports download in every format with the right file name", async ({ page }) => {
+  await mockStatus(page, status);
+  await page.route("**/api/websec/reports*", (route) => route.fulfill({
+    json: { reports: [{ name: "20261124T000000Z-95.json", bytes: 2048, modified: 1 }] }
+  }));
+  const formats: string[] = [];
+  await page.route("**/api/websec/report?*", (route) => {
+    const format = new URL(route.request().url()).searchParams.get("format") ?? "";
+    formats.push(format);
+    return route.fulfill({ json: { content: `content-${format}`, format, name: "20261124T000000Z-95.json" } });
+  });
+
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await expect(page.getByRole("main").getByText("20261124T000000Z-95.json")).toBeVisible();
+
+  for (const [button, extension] of [
+    ["JSON", "json"],
+    ["SARIF", "sarif"],
+    ["HTML", "html"],
+    ["Markdown", "md"]
+  ] as const) {
+    const pending = page.waitForEvent("download");
+    await page.getByRole("main").getByRole("button", { name: button }).click();
+    const download = await pending;
+    expect(download.suggestedFilename()).toBe(`example.test.20261124T000000Z-95.${extension}`);
+  }
+  expect(formats).toEqual(["json", "sarif", "html", "markdown"]);
+
+  await page.getByRole("main").getByRole("button", { name: "Open" }).click();
+  await expect(page.getByRole("main").getByText("content-markdown")).toBeVisible();
+});

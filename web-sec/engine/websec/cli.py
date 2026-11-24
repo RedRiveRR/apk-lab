@@ -27,6 +27,63 @@ def _grade_exit(grade: str) -> int:
     return _GRADE_EXIT.get(str(grade or "")[:1].upper(), 3)
 
 
+def diff_reports(current: Dict[str, object], previous: Dict[str, object]) -> Dict[str, object]:
+    """What changed between two reports of the same target.
+
+    Findings match on module and kind (falling back to the title), so a wording
+    change does not turn a standing finding into a new one.
+    """
+    def index(findings) -> Dict[str, Dict[str, object]]:
+        return {f"{f.get('module')}|{f.get('kind') or f.get('title')}": f for f in (findings or [])}
+
+    now, before = index(current.get("findings")), index(previous.get("findings"))
+    current_summary = current.get("summary") or {}
+    previous_summary = previous.get("summary") or {}
+    previous_modules = {m.get("id"): m.get("status") for m in (previous.get("modules") or [])}
+    module_changes = [
+        {"id": m.get("id"), "previous": previous_modules.get(m.get("id")), "current": m.get("status")}
+        for m in (current.get("modules") or [])
+        if previous_modules.get(m.get("id")) not in (None, m.get("status"))
+    ]
+
+    def brief(finding: Dict[str, object]) -> Dict[str, object]:
+        return {"module": finding.get("module"), "severity": finding.get("severity"),
+                "title": finding.get("title")}
+
+    score_now = int(current.get("score") or 0)
+    score_before = int(previous.get("score") or 0)
+    return {
+        "target": current.get("target"),
+        "score": {"current": score_now, "previous": score_before, "delta": score_now - score_before},
+        "grade": {"current": current.get("grade"), "previous": previous.get("grade")},
+        "summary": {
+            str(severity): {"current": int(current_summary.get(severity, 0) or 0),
+                            "previous": int(previous_summary.get(severity, 0) or 0)}
+            for severity in ("critical", "high", "medium", "low", "info", "total")
+        },
+        "new": sorted((brief(f) for key, f in now.items() if key not in before),
+                      key=lambda item: (str(item["module"]), str(item["title"]))),
+        "resolved": sorted((brief(f) for key, f in before.items() if key not in now),
+                           key=lambda item: (str(item["module"]), str(item["title"]))),
+        "modules": module_changes,
+    }
+
+
+def _render_diff(diff: Dict[str, object]) -> str:
+    lines = [
+        f"{diff['target']}: grade {diff['grade']['previous']} → {diff['grade']['current']} "
+        f"({diff['score']['previous']} → {diff['score']['current']}, {diff['score']['delta']:+d})",
+    ]
+    for key, label in (("new", "new findings"), ("resolved", "resolved findings")):
+        entries = diff[key]
+        lines.append(f"{label}: {len(entries)}")
+        for item in entries:
+            lines.append(f"  [{item['severity']}] {item['module']}: {item['title']}")
+    for change in diff["modules"]:
+        lines.append(f"module {change['id']}: {change['previous']} → {change['current']}")
+    return "\n".join(lines) + "\n"
+
+
 def _load_catalogue() -> List[Dict[str, object]]:
     from .catalog import ensure_loaded
     ensure_loaded()
@@ -154,6 +211,20 @@ def scan(args) -> int:
         paths = History().append(document)
     else:
         paths = {}
+    if args.diff:
+        try:
+            previous = History().load(options.target, str(args.diff))
+        except (OSError, ValueError) as exc:
+            _error(f"cannot read the previous report: {exc}")
+            return 2
+        if str(previous.get("target") or "") != options.target:
+            _error("the previous report is for a different target")
+            return 2
+        diff = diff_reports(document, previous)
+        _print(json.dumps(diff, indent=2, ensure_ascii=False) if fmt == "json" else _render_diff(diff))
+        if paths:
+            _error(f"history: {paths['history']}")
+        return 0 if not result.refused else 1
     if args.out:
         target = args.out
         if os.path.isdir(target):
@@ -320,6 +391,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--scheme", default="https", choices=("http", "https"))
     p_scan.add_argument("--format", default="markdown", choices=("json", "sarif", "markdown", "text", "html"))
     p_scan.add_argument("--json", action="store_true", help="shortcut for --format json")
+    p_scan.add_argument("--diff", default="",
+                        help="compare against a stored report name of the same target")
     p_scan.add_argument("--out", default="")
     p_scan.add_argument("--no-history", action="store_true")
     p_scan.add_argument("--timeout", type=float, default=6.0)

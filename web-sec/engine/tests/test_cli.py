@@ -11,6 +11,7 @@ import pytest
 from websec import cli as websec_cli
 from websec.cli import main
 from websec.history import History
+from websec.models import Finding
 from websec.scope import ScopeRefused
 
 
@@ -103,6 +104,69 @@ def test_bulk_csv_and_worst_grade_exit_code(tmp_path, monkeypatch):
     assert "c.test,,,0,0,0,0,0,0,the target is outside the declared scope" in out
     code, out, _ = run(["bulk", str(targets), "--preset", "quick"])
     assert code == 3
+
+
+def _fake_scan_result(score=90, grade="A", medium=1):
+    finding = Finding(module="security_analysis", severity="medium",
+                      title="Content-Security-Policy is missing",
+                      remediation="Enforce script-src 'self'.", kind="csp-missing")
+    summary = {"critical": 0, "high": 0, "medium": medium, "low": 0, "info": 0, "total": medium}
+    return SimpleNamespace(
+        target="example.test", url="https://example.test",
+        started_at="2026-11-24T00:00:00+00:00", duration_seconds=1.2,
+        score=score, grade=grade, summary=summary, refused=False, refusal="",
+        options=SimpleNamespace(preset="standard", active=False, keep_history=True),
+        as_dict=lambda include_data=True: {
+            "target": "example.test", "url": "https://example.test",
+            "started_at": "2026-11-24T00:00:00+00:00", "duration_seconds": 1.2,
+            "preset": "standard", "active": False, "score": score, "grade": grade,
+            "summary": dict(summary), "refused": False, "refusal": "",
+            "modules": [{"id": "security_analysis", "label": "Security posture", "status": "ok",
+                         "duration_ms": 10, "findings": medium, "error": "", "note": "", "data": {}}],
+            "findings": [finding.as_dict()],
+        })
+
+
+def _previous_document(score=95):
+    return {
+        "tool": {"name": "Web Sec Lab", "version": "0.1.0", "uri": "", "schema_version": 1},
+        "generated_at": "2026-11-23T00:00:00+00:00", "target": "example.test",
+        "url": "https://example.test", "started_at": "2026-11-23T00:00:00+00:00",
+        "duration_seconds": 2.0, "preset": "standard", "active": False, "score": score,
+        "grade": "A", "summary": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "total": 0},
+        "refused": False, "refusal": "", "modules": [], "findings": [],
+    }
+
+
+def test_scan_diff_against_a_stored_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
+    previous = History().append(_previous_document())
+    monkeypatch.setattr(websec_cli, "run_scan", lambda options: _fake_scan_result())
+    code, out, _ = run(["scan", "example.test", "--preset", "standard",
+                        "--diff", previous["name"], "--json"])
+    assert code == 0
+    diff = json.loads(out)
+    assert diff["score"]["delta"] == -5
+    assert [item["title"] for item in diff["new"]] == ["Content-Security-Policy is missing"]
+    assert diff["resolved"] == []
+
+
+def test_scan_diff_without_json_renders_lines(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
+    previous = History().append(_previous_document())
+    monkeypatch.setattr(websec_cli, "run_scan", lambda options: _fake_scan_result())
+    code, out, _ = run(["scan", "example.test", "--diff", previous["name"]])
+    assert code == 0
+    assert "95 → 90" in out
+    assert "new findings: 1" in out
+
+
+def test_scan_diff_refuses_a_missing_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
+    monkeypatch.setattr(websec_cli, "run_scan", lambda options: _fake_scan_result())
+    code, out, err = run(["scan", "example.test", "--diff", "20990101T000000Z-99.json", "--json"])
+    assert code == 2
+    assert "cannot read the previous report" in err
 
 
 @pytest.mark.parametrize("argv", [["scan"], ["nonsense"]])

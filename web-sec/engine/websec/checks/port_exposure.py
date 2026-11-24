@@ -17,6 +17,8 @@ DATABASES = {3306: "MySQL", 5432: "PostgreSQL", 6379: "Redis", 27017: "MongoDB",
              9200: "Elasticsearch", 1433: "MSSQL", 5984: "CouchDB", 11211: "Memcached"}
 PLAINTEXT = {21: "FTP", 23: "Telnet", 110: "POP3", 143: "IMAP", 25: "SMTP", 53: "DNS"}
 ADMIN_PORTS = {8080: "HTTP alternate", 8443: "HTTPS alternate", 3389: "RDP"}
+SERVICES = {80: "HTTP", 443: "HTTPS", 22: "SSH", 587: "SMTP submission",
+            465: "SMTPS", 993: "IMAPS", 995: "POP3S"}
 MAX_PORTS = 20
 _VERSION = re.compile(r"([A-Za-z][A-Za-z0-9._-]{2,30})[/ ]([0-9]+(?:\.[0-9]+){0,3})")
 
@@ -28,7 +30,7 @@ def _service(port: int, banner: str) -> str:
                          ("smtp", "SMTP"), ("ftp", "FTP")):
         if marker in lowered:
             return name
-    return DATABASES.get(port) or PLAINTEXT.get(port) or ADMIN_PORTS.get(port) or ""
+    return DATABASES.get(port) or PLAINTEXT.get(port) or ADMIN_PORTS.get(port) or SERVICES.get(port) or ""
 
 
 def _nvd(ctx, service: str, version: str) -> List[Dict[str, str]]:

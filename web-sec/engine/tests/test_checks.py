@@ -284,3 +284,29 @@ def test_runner_honours_an_expired_budget():
     result = run_scan(Options.build(ZONE, modules="security_txt"), context=ctx)
     assert result.outcomes["security_txt"].status == "skipped"
     assert "budget" in result.outcomes["security_txt"].note
+
+
+def test_port_exposure_names_a_bannerless_known_port():
+    ctx = make_context(open_ports={443: ""})
+    data, _ = _call("port_exposure", ctx)
+    assert data["ports"][0]["service"] == "HTTPS"
+
+
+def test_content_scan_follows_imported_chunks_one_level():
+    key = "AKIA" + "IOSFODNN7EXAMPLE"
+    http = FakeHttp({
+        f"https://{ZONE}/": page("<html><script src='/app.js'></script></html>"),
+        f"https://{ZONE}/app.js": page("import { probe } from './chunk.js';"),
+        f"https://{ZONE}/chunk.js": page(f"const key='{key}';"),
+    })
+    ctx = make_context(http=http)
+    data, _ = _call("content_scan", ctx)
+    assert ("GET", f"https://{ZONE}/chunk.js") in http.requests
+    assert any(entry["kind"] == "AWS access key id" for entry in data["secrets"])
+
+
+def test_origin_exposure_recognises_cdn_ranges():
+    from websec.checks.origin_exposure import _cdn_for_address
+    assert _cdn_for_address("104.16.132.229") == "Cloudflare"
+    assert _cdn_for_address("151.101.1.140") == "Fastly"
+    assert _cdn_for_address("203.0.113.7") == ""

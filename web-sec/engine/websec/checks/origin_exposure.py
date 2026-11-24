@@ -7,7 +7,8 @@ under the target domain.
 """
 from __future__ import annotations
 
-from typing import Dict, List
+import ipaddress
+from typing import Dict, List, Tuple
 
 from ..models import Finding
 from ..registry import module
@@ -15,6 +16,34 @@ from ..registry import module
 CANDIDATE_LABELS = ("mail", "ftp", "direct", "origin", "cpanel", "webmail", "vpn", "dev",
                     "staging", "api", "smtp", "remote", "server", "host")
 CDN_HEADERS = ("cf-ray", "x-vercel-id", "x-amz-cf-id", "x-akamai-transformed", "x-sucuri-id")
+# Curated IPv4 ranges published by the common CDNs. Heuristic, not exhaustive:
+# an address inside one of these is very unlikely to be the bare origin.
+CDN_RANGES: Tuple[Tuple[str, str], ...] = (
+    ("Cloudflare", "104.16.0.0/13"), ("Cloudflare", "172.64.0.0/13"),
+    ("Cloudflare", "131.0.72.0/22"), ("Cloudflare", "162.158.0.0/15"),
+    ("Cloudflare", "198.41.128.0/17"), ("Cloudflare", "141.101.64.0/18"),
+    ("Cloudflare", "103.21.244.0/22"), ("Cloudflare", "103.22.200.0/22"),
+    ("Cloudflare", "103.31.4.0/22"), ("Cloudflare", "188.114.96.0/20"),
+    ("Fastly", "151.101.0.0/16"), ("Fastly", "146.75.0.0/16"),
+    ("Fastly", "199.232.0.0/16"), ("Fastly", "23.235.32.0/20"),
+    ("CloudFront", "13.32.0.0/15"), ("CloudFront", "52.84.0.0/15"),
+    ("CloudFront", "143.204.0.0/16"), ("CloudFront", "99.86.0.0/16"),
+    ("CloudFront", "205.251.208.0/20"),
+    ("Akamai", "2.16.0.0/13"), ("Akamai", "23.32.0.0/11"),
+    ("Akamai", "104.64.0.0/10"),
+)
+_CDN_NETWORKS = tuple((name, ipaddress.ip_network(cidr)) for name, cidr in CDN_RANGES)
+
+
+def _cdn_for_address(address: str) -> str:
+    try:
+        ip = ipaddress.ip_address(str(address))
+    except ValueError:
+        return ""
+    for name, network in _CDN_NETWORKS:
+        if ip in network:
+            return name
+    return ""
 
 
 def _behind_cdn(headers: Dict[str, str]) -> str:
@@ -52,6 +81,12 @@ def origin_exposure(ctx, results):
             continue
         response = ctx.http.get(f"https://{name}")
         edge = _behind_cdn(response.headers or {}) if not response.error else ""
+        if not edge:
+            for address in addresses[:4]:
+                provider = _cdn_for_address(str(address))
+                if provider:
+                    edge = f"address in a {provider} range"
+                    break
         entry = {"name": name, "addresses": addresses[:4], "edge": edge,
                  "status": response.status if not response.error else 0}
         candidates.append(entry)

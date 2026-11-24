@@ -9,14 +9,17 @@ from __future__ import annotations
 import re
 from collections import OrderedDict
 from typing import Dict, List
+from urllib.parse import urljoin
 
 from ..models import Finding
 from ..registry import module
 from .common import find_secrets, parse_html, same_host
 
 SOURCE_MAP = re.compile(r"[#@]\s*sourceMappingURL=([^\s*/][^\s]*)", re.I)
+_IMPORT = re.compile(r"""(?:\bimport\b[^;()]{0,200}?from\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["']([^"']{2,200})["']""")
 MAX_SCRIPTS = 5
 MAX_SCAN_BYTES = 256 * 1024
+MAX_CHUNKS = 5
 
 
 def _scan(blobs: Dict[str, str]) -> Dict[str, Dict[str, object]]:
@@ -36,6 +39,16 @@ def _scan(blobs: Dict[str, str]) -> Dict[str, Dict[str, object]]:
     return grouped
 
 
+def _imports(text: str) -> List[str]:
+    """Relative and root-relative script references worth following one level."""
+    specs = []
+    for match in _IMPORT.finditer(text):
+        spec = match.group(1)
+        if spec.startswith(("./", "../", "/")) and not spec.endswith((".css", ".map")):
+            specs.append(spec)
+    return specs
+
+
 @module("content_scan", label="Content and secret exposure",
         description="Secret patterns in served HTML and scripts, source maps, framework data blobs",
         group="security", weight="heavy", order=70, upstream="Advanced Content Scan")
@@ -49,14 +62,30 @@ def content_scan(ctx):
         blobs[f"inline[{index}]"] = inline[:MAX_SCAN_BYTES]
     scripts = [ctx.absolute(src) for src in page.scripts][:MAX_SCRIPTS]
     scanned = 0
-    for url in scripts:
-        if not same_host(url, ctx.target):
-            continue
-        response = ctx.http.get(url)
-        if response.error or response.status >= 400:
-            continue
-        scanned += 1
-        blobs[url.rsplit("/", 1)[-1][:80] or "script"] = response.text[:MAX_SCAN_BYTES]
+    queue = [url for url in scripts if same_host(url, ctx.target)]
+    seen: set = set()
+    depth = 0
+    while queue and depth <= 1:  # the page's scripts plus one level of imported chunks
+        follow: List[str] = []
+        for url in queue:
+            if url in seen:
+                continue
+            seen.add(url)
+            response = ctx.http.get(url)
+            if response.error or response.status >= 400:
+                continue
+            scanned += 1
+            text = response.text[:MAX_SCAN_BYTES]
+            blobs[url.rsplit("/", 1)[-1][:80] or "script"] = text
+            if depth == 0:
+                for spec in _imports(text):
+                    candidate = urljoin(url, spec)
+                    if same_host(candidate, ctx.target) and candidate not in seen:
+                        follow.append(candidate)
+                    if len(follow) >= MAX_CHUNKS:
+                        break
+        queue = follow
+        depth += 1
     secrets = _scan(blobs)
     maps = sorted({match.group(1).strip("\"'").split("?")[0]
                    for text in blobs.values() for match in SOURCE_MAP.finditer(text)})[:10]

@@ -3041,5 +3041,10 @@
   "Group": "Grupo",
   "Module": "Módulo",
   "Upstream": "Proyecto origen",
-  "Weight": "Peso"
+  "Weight": "Peso",
+  "Boundaries": "Límites",
+  "Open the workbench": "Abrir el banco de trabajo",
+  "Assesses one authorized host and grades its posture.": "Evalúa un host autorizado y asigna una calificación de postura.",
+  "Read-only by default; intrusive checks need --active and written authorization.": "Solo lectura por defecto; las comprobaciones intrusivas requieren --active y autorización escrita.",
+  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "Los datos públicos provienen solo de crt.sh, la API CDX de Wayback y NVD."
 }

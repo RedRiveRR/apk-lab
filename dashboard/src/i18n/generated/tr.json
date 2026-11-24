@@ -3041,5 +3041,10 @@
   "Group": "Grup",
   "Module": "Modül",
   "Upstream": "Kaynak proje",
-  "Weight": "Ağırlık"
+  "Weight": "Ağırlık",
+  "Boundaries": "Sınırlar",
+  "Open the workbench": "Çalışma tezgahını aç",
+  "Assesses one authorized host and grades its posture.": "Yetkili olduğunuz tek bir ana makineyi değerlendirir ve durum puanı verir.",
+  "Read-only by default; intrusive checks need --active and written authorization.": "Varsayılan salt okunur; saldırgan kontroller --active ve yazılı izin ister.",
+  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "Herkese açık veriler yalnızca crt.sh, Wayback CDX API ve NVD'den gelir."
 }

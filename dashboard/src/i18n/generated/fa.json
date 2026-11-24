@@ -3041,5 +3041,10 @@
   "Group": "گروه",
   "Module": "ماژول",
   "Upstream": "پروژه مبدأ",
-  "Weight": "وزن"
+  "Weight": "وزن",
+  "Boundaries": "مرزها",
+  "Open the workbench": "میز کار را باز کن",
+  "Assesses one authorized host and grades its posture.": "یک میزبان مجاز را ارزیابی و برای آن امتیاز وضعیت می‌دهد.",
+  "Read-only by default; intrusive checks need --active and written authorization.": "به‌صورت پیش‌فرض فقط‌خواندنی؛ بررسی‌های مهاجم به --active و اجازه کتبی نیاز دارند.",
+  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "داده‌های عمومی فقط از crt.sh، رابط CDX Wayback و NVD می‌آیند."
 }

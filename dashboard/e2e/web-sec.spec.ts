@@ -116,3 +116,65 @@ test("a stored report opens as rendered Markdown", async ({ page }) => {
   await page.getByRole("main").getByRole("button", { name: "Open" }).click();
   await expect(page.getByRole("main").getByText("# Web Sec Lab report — example.test")).toBeVisible();
 });
+
+const reportWithModuleData: WebSecReport = {
+  ...report,
+  modules: [
+    {
+      id: "domain_info", label: "Domain information", status: "ok", duration_ms: 90,
+      findings: 0, error: "", note: "",
+      data: {
+        "domain name": ["example.test"],
+        registrar: ["TEST Registrar"],
+        "registry expiry date": ["2027-01-01T00:00:00Z"],
+        "name server": ["ns1.example.test", "ns2.example.test"],
+        status: ["ok"],
+        available: true
+      }
+    },
+    {
+      id: "security_analysis", label: "Security posture", status: "ok", duration_ms: 120,
+      findings: 1, error: "", note: "",
+      data: {
+        score: 82,
+        grade: "B",
+        headers: { "strict-transport-security": "max-age=63072000; includeSubDomains" },
+        cookies: [{ name: "sid", secure: true, httponly: true, samesite: "Lax", session: true }],
+        https_redirect: true,
+        checks: []
+      }
+    }
+  ]
+};
+
+test("check rows open drill-down panels with the module's own data", async ({ page }) => {
+  await mockStatus(page, status);
+  let polls = 0;
+  await page.route(/\/api\/websec\/scans$/, (route) => route.fulfill({ status: 202, json: job("running") }));
+  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
+    polls += 1;
+    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report: reportWithModuleData }) });
+  });
+
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+
+  const whoisToggle = page.getByRole("main").getByRole("button", { name: "Domain information" });
+  await expect(whoisToggle).toHaveAttribute("aria-expanded", "false");
+  await whoisToggle.click();
+  await expect(whoisToggle).toHaveAttribute("aria-expanded", "true");
+  const whoisRegion = page.getByRole("region", { name: "Domain information details" });
+  await expect(whoisRegion).toBeVisible();
+  await expect(whoisRegion.getByText("TEST Registrar")).toBeVisible();
+  await expect(whoisRegion.getByText("ns1.example.test")).toBeVisible();
+
+  const headersToggle = page.getByRole("main").getByRole("button", { name: "Security posture" });
+  await headersToggle.click();
+  const headersRegion = page.getByRole("region", { name: "Security posture details" });
+  await expect(headersRegion).toBeVisible();
+  await expect(headersRegion.getByText("strict-transport-security")).toBeVisible();
+  await expect(headersRegion.getByText("sid")).toBeVisible();
+  await expect(headersRegion.getByText("Redirects to https")).toBeVisible();
+});

@@ -765,7 +765,7 @@ export interface WebSecFinding {
 }
 export interface WebSecModuleOutcome {
   id: string; label: string; status: string; duration_ms: number;
-  findings: number; error: string; note: string;
+  findings: number; error: string; note: string; data?: Record<string, unknown>;
 }
 export interface WebSecReport {
   target: string; url: string; started_at: string; duration_seconds: number;

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   ArrowSquareOutIcon,
+  CaretDownIcon,
+  CaretRightIcon,
   DownloadSimpleIcon,
   PlayIcon,
   ShieldCheckIcon,
@@ -19,6 +21,7 @@ import {
   type WebSecSeverity,
   type WebSecStatus
 } from "../../lib/api";
+import { hasData, ModulePanel } from "./panels";
 
 const SEVERITIES: WebSecSeverity[] = ["critical", "high", "medium", "low", "info"];
 const SEVERITY_CLASS: Record<WebSecSeverity, string> = {
@@ -102,6 +105,7 @@ export default function WebSecLabPage() {
   const [history, setHistory] = useState<{ target: string; scanned_at: string; grade: string; score: number; summary: Record<string, number> }[]>([]);
   const [reports, setReports] = useState<WebSecReportFile[]>([]);
   const [filter, setFilter] = useState<WebSecSeverity | "all">("all");
+  const [openModules, setOpenModules] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -168,6 +172,11 @@ export default function WebSecLabPage() {
     const list = report?.findings ?? [];
     return filter === "all" ? list : list.filter((finding) => finding.severity === filter);
   }, [report, filter]);
+
+  const toggleModule = (id: string) => {
+    setOpenModules((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
 
   const start = async () => {
     setError("");
@@ -398,14 +407,43 @@ export default function WebSecLabPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.modules.map((module) => (
-                    <tr key={module.id} className="border-t border-(--iux-border)">
-                      <td className="py-1">{module.label}</td>
-                      <td>{module.status}</td>
-                      <td>{module.findings}</td>
-                      <td>{module.duration_ms} ms</td>
-                    </tr>
-                  ))}
+                  {report.modules.map((module) => {
+                    const open = openModules.includes(module.id);
+                    return (
+                      <Fragment key={module.id}>
+                        <tr className="border-t border-(--iux-border)">
+                          <td className="py-1">
+                            {hasData(module) ? (
+                              <button
+                                type="button"
+                                aria-expanded={open}
+                                aria-controls={`${module.id}-panel`}
+                                onClick={() => toggleModule(module.id)}
+                                className="inline-flex items-center gap-1 hover:underline"
+                              >
+                                {open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}
+                                {module.label}
+                              </button>
+                            ) : (
+                              module.label
+                            )}
+                          </td>
+                          <td>{module.status}</td>
+                          <td>{module.findings}</td>
+                          <td>{module.duration_ms} ms</td>
+                        </tr>
+                        {open ? (
+                          <tr>
+                            <td colSpan={4} className="py-2 pr-3">
+                              <div id={`${module.id}-panel`}>
+                                <ModulePanel module={module} />
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </details>

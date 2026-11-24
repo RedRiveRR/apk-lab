@@ -25,7 +25,7 @@ MODULE_ID = re.compile(r"^[a-z][a-z0-9_]{0,47}$", re.ASCII)
 REPORT_NAME = re.compile(r"^[0-9A-Za-z._-]{1,120}\.json$", re.ASCII)
 FORMATS = {"json", "sarif", "markdown", "md", "text", "html"}
 PRESETS = {"quick", "standard", "full"}
-PAYLOAD_KEYS = {"target", "preset", "modules", "active", "cveLookup", "scheme"}
+PAYLOAD_KEYS = {"target", "preset", "modules", "active", "cveLookup", "scheme", "timeout", "deadline"}
 MAX_MODULES = 40
 MAX_BULK = 20
 MAX_JOBS = 20
@@ -149,8 +149,25 @@ class WebSecAPI:
         scheme = payload.get("scheme", "https")
         if scheme not in ("http", "https"):
             raise WebSecError(400, "scheme must be http or https")
+        timeout = payload.get("timeout")
+        if timeout is not None:
+            try:
+                timeout = float(timeout)
+            except (TypeError, ValueError):
+                raise WebSecError(400, "timeout must be a number") from None
+            if not 1 <= timeout <= 30:
+                raise WebSecError(400, "timeout must be between 1 and 30 seconds")
+        deadline = payload.get("deadline")
+        if deadline is not None:
+            try:
+                deadline = float(deadline)
+            except (TypeError, ValueError):
+                raise WebSecError(400, "deadline must be a number") from None
+            if not 10 <= deadline <= 600:
+                raise WebSecError(400, "deadline must be between 10 and 600 seconds")
         return {"target": target, "preset": preset, "modules": modules, "scheme": scheme,
-                "active": bool(payload.get("active")), "cveLookup": bool(payload.get("cveLookup"))}
+                "active": bool(payload.get("active")), "cveLookup": bool(payload.get("cveLookup")),
+                "timeout": timeout, "deadline": deadline}
 
     def start_scan(self, payload: dict) -> dict:
         if len(json.dumps(payload, allow_nan=False).encode("utf-8")) > MAX_BODY:
@@ -178,6 +195,10 @@ class WebSecAPI:
                 args.append("--active")
             if options["cveLookup"]:
                 args.append("--cve-lookup")
+            if options["timeout"] is not None:
+                args += ["--timeout", str(options["timeout"])]
+            if options["deadline"] is not None:
+                args += ["--deadline", str(options["deadline"])]
             with open(stdout_path, "wb") as stdout, open(stderr_path, "wb") as stderr:
                 try:
                     process = subprocess.Popen(args, cwd=self.root, stdout=stdout, stderr=stderr,

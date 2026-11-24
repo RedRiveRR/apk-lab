@@ -3046,5 +3046,10 @@
   "Open the workbench": "میز کار را باز کن",
   "Assesses one authorized host and grades its posture.": "یک میزبان مجاز را ارزیابی و برای آن امتیاز وضعیت می‌دهد.",
   "Read-only by default; intrusive checks need --active and written authorization.": "به‌صورت پیش‌فرض فقط‌خواندنی؛ بررسی‌های مهاجم به --active و اجازه کتبی نیاز دارند.",
-  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "داده‌های عمومی فقط از crt.sh، رابط CDX Wayback و NVD می‌آیند."
+  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "داده‌های عمومی فقط از crt.sh، رابط CDX Wayback و NVD می‌آیند.",
+  "Pacing": "محدودیت سرعت",
+  "Request timeout (s)": "زمان انتظار درخواست (ثانیه)",
+  "Scan budget (s)": "بودجه اسکن (ثانیه)",
+  "Environment": "محیط",
+  "History keeps 50 runs and 20 reports per target.": "تاریخچه برای هر هدف ۵۰ اجرا و ۲۰ گزارش نگه می‌دارد."
 }

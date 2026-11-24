@@ -1033,7 +1033,7 @@ export const api = {
   webDeleteInjection: (id: string) => call<{ ok: boolean; removed: boolean }>(`/api/web/injections/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-OSLab": "1" } }),
   websecStatus: () => call<WebSecStatus>("/api/websec/status"),
   websecModules: () => call<{ modules: WebSecModule[] }>("/api/websec/modules"),
-  websecStart: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean; cveLookup?: boolean }) =>
+  websecStart: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean; cveLookup?: boolean; timeout?: number; deadline?: number }) =>
     post<WebSecJob>("/api/websec/scans", request),
   websecJob: (id: string) => call<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
   websecCancel: (id: string) => del<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),

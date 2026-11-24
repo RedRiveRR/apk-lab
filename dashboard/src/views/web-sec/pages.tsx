@@ -110,6 +110,8 @@ export default function WebSecLabPage() {
   const [scheme, setScheme] = useState<"http" | "https">("https");
   const [active, setActive] = useState(false);
   const [confirmActive, setConfirmActive] = useState(false);
+  const [timeoutText, setTimeoutText] = useState("");
+  const [deadlineText, setDeadlineText] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<WebSecJob | null>(null);
@@ -254,6 +256,18 @@ export default function WebSecLabPage() {
   };
 
   const runScan = async (intrusive: boolean) => {
+    const timeout = timeoutText.trim() === "" ? undefined : Number(timeoutText);
+    const deadline = deadlineText.trim() === "" ? undefined : Number(deadlineText);
+    if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 1 || timeout > 30)) {
+      setError("Request timeout must be between 1 and 30 seconds.");
+      setConfirmActive(false);
+      return;
+    }
+    if (deadline !== undefined && (!Number.isFinite(deadline) || deadline < 10 || deadline > 600)) {
+      setError("Scan budget must be between 10 and 600 seconds.");
+      setConfirmActive(false);
+      return;
+    }
     setConfirmActive(false);
     setBusy(true);
     try {
@@ -262,7 +276,9 @@ export default function WebSecLabPage() {
         preset,
         scheme,
         active: intrusive,
-        modules: selected.length ? selected : undefined
+        modules: selected.length ? selected : undefined,
+        timeout,
+        deadline
       });
       setJob(created);
       setJobId(created.id);
@@ -451,6 +467,49 @@ export default function WebSecLabPage() {
               <span className="block text-xs text-(--iux-muted-foreground)">Only with written authorization for this host.</span>
             </span>
           </label>
+
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer text-(--iux-muted-foreground)">Pacing</summary>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:w-1/2">
+              <label className="flex flex-col gap-1">
+                <span className="text-(--iux-muted-foreground)">Request timeout (s)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  step="0.5"
+                  placeholder="6"
+                  value={timeoutText}
+                  onChange={(event) => setTimeoutText(event.target.value)}
+                  className="rounded border border-(--iux-border) bg-(--iux-bg) px-2 py-1.5"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-(--iux-muted-foreground)">Scan budget (s)</span>
+                <input
+                  type="number"
+                  min={10}
+                  max={600}
+                  step="1"
+                  placeholder="60"
+                  value={deadlineText}
+                  onChange={(event) => setDeadlineText(event.target.value)}
+                  className="rounded border border-(--iux-border) bg-(--iux-bg) px-2 py-1.5"
+                />
+              </label>
+            </div>
+          </details>
+
+          {status ? (
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-(--iux-muted-foreground)">Environment</summary>
+              <div className="mt-2 space-y-1 text-xs text-(--iux-muted-foreground)">
+                <p>Python <span className="font-mono">{status.python}</span></p>
+                <p>Storage <span className="font-mono break-all">{status.storage}</span></p>
+                <p>History keeps 50 runs and 20 reports per target.</p>
+              </div>
+            </details>
+          ) : null}
 
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-(--iux-muted-foreground)">

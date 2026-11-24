@@ -3046,5 +3046,10 @@
   "Open the workbench": "افتح مساحة العمل",
   "Assesses one authorized host and grades its posture.": "يقيّم مضيفاً واحداً مصرّحاً به ويمنح درجة للوضع الأمني.",
   "Read-only by default; intrusive checks need --active and written authorization.": "القراءة فقط افتراضياً؛ الفحوصات التدخلية تتطلب --active وتصريحاً مكتوباً.",
-  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "تأتي البيانات العامة فقط من crt.sh وواجهة Wayback CDX وNVD."
+  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "تأتي البيانات العامة فقط من crt.sh وواجهة Wayback CDX وNVD.",
+  "Pacing": "وتيرة التنفيذ",
+  "Request timeout (s)": "مهلة الطلب (ث)",
+  "Scan budget (s)": "ميزانية الفحص (ث)",
+  "Environment": "البيئة",
+  "History keeps 50 runs and 20 reports per target.": "يحتفظ السجل بـ 50 تشغيلاً و20 تقريراً لكل هدف."
 }

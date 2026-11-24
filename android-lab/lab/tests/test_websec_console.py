@@ -106,6 +106,44 @@ def test_api_for_is_one_object_per_checkout(tmp_path):
     assert first.jobs is second.jobs
 
 
+def test_api_validates_pacing_overrides(tmp_path):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    options = api._validate({"target": "example.test", "timeout": 12, "deadline": "120"})
+    assert options["timeout"] == 12.0
+    assert options["deadline"] == 120.0
+    with pytest.raises(websec_api.WebSecError):
+        api._validate({"target": "example.test", "timeout": 0.5})
+    with pytest.raises(websec_api.WebSecError):
+        api._validate({"target": "example.test", "timeout": "soon"})
+    with pytest.raises(websec_api.WebSecError):
+        api._validate({"target": "example.test", "deadline": 900})
+
+
+def test_start_scan_passes_pacing_to_the_engine(tmp_path, monkeypatch):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    api.runner = tmp_path / "run.py"
+    api.runner.write_text("", encoding="utf-8")
+    api.storage = tmp_path / "storage"
+    seen = {}
+
+    class FakeProcess:
+        pid = 4242
+
+        def poll(self):
+            return None
+
+    def fake_popen(args, **kwargs):
+        seen["args"] = args
+        return FakeProcess()
+
+    monkeypatch.setattr(websec_api.subprocess, "Popen", fake_popen)
+    job = api.start_scan({"target": "example.test", "timeout": 12, "deadline": 120})
+    assert job["state"] == "running"
+    args = seen["args"]
+    assert args[args.index("--timeout") + 1] == "12.0"
+    assert args[args.index("--deadline") + 1] == "120.0"
+
+
 def test_start_scan_refuses_an_out_of_scope_target_before_spawning(tmp_path, monkeypatch):
     api = websec_api.WebSecAPI(str(tmp_path))
     monkeypatch.setattr(api, "_scope_refusal", lambda target: "Refused: host is outside the lab scope")

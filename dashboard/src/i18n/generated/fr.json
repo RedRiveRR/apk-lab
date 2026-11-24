@@ -3046,5 +3046,10 @@
   "Open the workbench": "Ouvrir l'atelier",
   "Assesses one authorized host and grades its posture.": "Évalue un hôte autorisé et attribue une note de posture.",
   "Read-only by default; intrusive checks need --active and written authorization.": "Lecture seule par défaut ; les contrôles intrusifs exigent --active et une autorisation écrite.",
-  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "Les données publiques proviennent uniquement de crt.sh, de l'API CDX Wayback et de NVD."
+  "Public data comes only from crt.sh, the Wayback CDX API and NVD.": "Les données publiques proviennent uniquement de crt.sh, de l'API CDX Wayback et de NVD.",
+  "Pacing": "Cadence",
+  "Request timeout (s)": "Délai de requête (s)",
+  "Scan budget (s)": "Budget d'analyse (s)",
+  "Environment": "Environnement",
+  "History keeps 50 runs and 20 reports per target.": "L'historique conserve 50 exécutions et 20 rapports par cible."
 }

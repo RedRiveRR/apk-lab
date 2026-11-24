@@ -257,6 +257,28 @@ test("a bulk job renders a grade per target and a refusal row", async ({ page })
   expect(sent).toMatchObject({ targets: ["one.test", "two.test", "three.test", "outside.test"], preset: "quick" });
 });
 
+test("pacing overrides ride along with the scan request", async ({ page }) => {
+  await mockStatus(page, status);
+  const sent: Record<string, unknown>[] = [];
+  let polls = 0;
+  await page.route(/\/api\/websec\/scans$/, async (route) => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ status: 202, json: job("running") });
+  });
+  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
+    polls += 1;
+    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report }) });
+  });
+
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByLabel("Request timeout (s)").fill("12");
+  await page.getByRole("main").getByLabel("Scan budget (s)").fill("120");
+  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  expect(sent[0]).toMatchObject({ target: "example.test", timeout: 12, deadline: 120 });
+});
+
 test("a history row opens the stored report in the workbench", async ({ page }) => {
   await mockStatus(page, status);
   await page.route("**/api/websec/history*", (route) => route.fulfill({

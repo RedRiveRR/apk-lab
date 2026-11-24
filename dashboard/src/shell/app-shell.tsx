@@ -60,6 +60,7 @@ export const LAB_ICON: Record<LabId, (size?: number) => ReactNode> = {
   ios: (s = 16) => <AppleLogoIcon size={s} />,
   source: (s = 16) => <TerminalWindowIcon size={s} />,
   macos: (s = 16) => <LaptopIcon size={s} />,
+  websec: (s = 16) => <ShieldCheckIcon size={s} />,
   web: (s = 16) => <GlobeIcon size={s} />
 };
 
@@ -80,6 +81,7 @@ export function sectionHref(id: string): string {
     return localized(`/cleanup/${page === "dashboard" ? "" : page + "/"}`) + (anchor ? `#${anchor}` : "");
   }
   if (id === "web-lab") return localized("/web-lab/");
+  if (id === "web-sec") return localized("/web-sec/");
   if (id === "firewall" || id === "firewall-lab" || id === "firewall-companies" || id === "firewall-add") {
     const locale = typeof window === "undefined" ? "en" : localeFromPath(window.location.pathname);
     const hash = id === "firewall-companies" ? "#companies" : id === "firewall-add" ? "#add" : "";
@@ -222,6 +224,16 @@ function buildGroups(labs: LabStatus[] | undefined, running: Set<string>, androi
         { id: "cleanup-settings", label: "Settings" }
       ]
     },
+    websec: {
+      id: "websec",
+      label: "Web Sec Lab",
+      icon: LAB_ICON.websec(),
+      badge: running.has("websec") ? <RunningDot /> : <StatePill lab={lab("websec")} />,
+      children: [
+        { id: "web-sec", label: "Workbench" },
+        { id: "lab-websec", label: "Readiness & setup" }
+      ]
+    },
     web: {
       id: "web",
       label: "Web Lab",
@@ -332,6 +344,8 @@ function buildMeta(): Record<string, SpotlightMeta> {
     "lab-macos": { description: "Native Xcode Simulator and Appium on a Mac", aliases: ["mac", "appium", "xcuitest"] },
     "lab-linux": { description: "Linux VM with web console and SSH", aliases: ["linux", "ssh", "vm"] },
     "web-lab": { description: "Embedded in-app browser: open windows, inject JavaScript, read captured page activity", aliases: ["web", "browser", "webview", "injection", "javascript"] },
+    "web-sec": { description: "Scope-guarded web posture assessment: scan a host, read findings, export SARIF or Markdown", aliases: ["websec", "web sec", "headers", "tls", "dast", "sarif"] },
+    "lab-websec": { description: "Web Sec Lab readiness: Python, storage and the declared test scope", aliases: ["websec", "scope", "policy"] },
     "lab-web": { description: "Web Lab engine readiness: cargo, make and the built engine", aliases: ["web", "engine", "setup"] },
     firewall: { description: "BGT207 dream-company firewall designs — branches, segmentation, products and rule sets", aliases: ["firewall", "bgt207", "ufw", "rules", "vlan", "dmz", "company"] },
     health: { description: "GET /api/health", aliases: ["status", "api"] },

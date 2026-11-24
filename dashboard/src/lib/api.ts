@@ -8,7 +8,7 @@
 import { useEffect, useReducer } from "react";
 import type { CapabilityCatalog } from "../health/capabilities";
 
-export type LabId = "android" | "windows" | "winapps" | "linux" | "ios" | "macos" | "source" | "web";
+export type LabId = "android" | "windows" | "winapps" | "linux" | "ios" | "macos" | "source" | "websec" | "web";
 export type LabState = "ready" | "needs-setup" | "unavailable";
 
 export interface HostTool {
@@ -745,6 +745,46 @@ export interface WebOverview {
   eventCount: number; lastEventSeq: number;
 }
 
+// Web Sec Lab (console/websec_api.py → web-sec/engine)
+export type WebSecState = "ready" | "needs-setup" | "unavailable";
+export type WebSecSeverity = "critical" | "high" | "medium" | "low" | "info";
+export interface WebSecRequirement {
+  id: string; label: string; found: boolean; required: boolean; hint: string;
+}
+export interface WebSecStatus {
+  state: WebSecState; provider: string | null; requirements: WebSecRequirement[];
+  reasons: string[]; notes: string[]; version: string; python: string; storage: string;
+}
+export interface WebSecModule {
+  id: string; label: string; description: string; group: string;
+  weight: string; active: boolean; upstream: string;
+}
+export interface WebSecFinding {
+  module: string; severity: WebSecSeverity; title: string; detail: string;
+  evidence: string; remediation: string; refs: string[];
+}
+export interface WebSecModuleOutcome {
+  id: string; label: string; status: string; duration_ms: number;
+  findings: number; error: string; note: string;
+}
+export interface WebSecReport {
+  target: string; url: string; started_at: string; duration_seconds: number;
+  preset: string; active: boolean; score: number; grade: string;
+  summary: Record<WebSecSeverity | "total", number>;
+  refused: boolean; refusal: string;
+  modules: WebSecModuleOutcome[]; findings: WebSecFinding[];
+}
+export interface WebSecJob {
+  id: string; state: "running" | "done" | "error" | "cancelled";
+  target: string; preset: string; active: boolean; started: number;
+  report?: WebSecReport; error?: string;
+}
+export interface WebSecHistoryEntry {
+  target: string; scanned_at: string; score: number; grade: string;
+  summary: Record<string, number>; preset: string; active: boolean; refused: boolean;
+}
+export interface WebSecReportFile { name: string; bytes: number; modified: number }
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -981,6 +1021,18 @@ export const api = {
   webEvents: (since: number) => call<{ events: WebEvent[]; lastSeq: number; count: number }>(`/api/web/events?since=${since}`),
   webAddInjection: (name: string, code: string) => post<{ ok: boolean; injection: WebInjection }>("/api/web/injections", { name, code }),
   webDeleteInjection: (id: string) => call<{ ok: boolean; removed: boolean }>(`/api/web/injections/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-OSLab": "1" } }),
+  websecStatus: () => call<WebSecStatus>("/api/websec/status"),
+  websecModules: () => call<{ modules: WebSecModule[] }>("/api/websec/modules"),
+  websecStart: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean; cveLookup?: boolean }) =>
+    post<WebSecJob>("/api/websec/scans", request),
+  websecJob: (id: string) => call<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecCancel: (id: string) => del<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecHistory: (target?: string) =>
+    call<{ entries: WebSecHistoryEntry[] }>(`/api/websec/history?limit=20${target ? `&target=${encodeURIComponent(target)}` : ""}`),
+  websecReports: (target: string) =>
+    call<{ reports: WebSecReportFile[] }>(`/api/websec/reports?target=${encodeURIComponent(target)}`),
+  websecReport: (target: string, name: string, format: string) =>
+    call<{ content: string; format: string; name: string }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
   upload: async (file: File) => {
     const form = new FormData();
     form.append("apk", file);

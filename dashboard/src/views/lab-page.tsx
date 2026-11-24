@@ -54,7 +54,8 @@ const REFERENCE: Record<LabId, { check: string; setup: string; where: string }> 
   ios: { check: "./labctl ios status", setup: "./labctl ios profile use development\n./labctl ios start --wait", where: "ios-lab" },
   source: { check: "./labctl source doctor", setup: "./labctl source setup", where: "source-lab" },
   macos: { check: "make -C ios-lab mac-app-doctor", setup: "make -C ios-lab mac-appium mac-app-smoke", where: "ios-lab/mac" },
-  web: { check: "./labctl web status", setup: "./labctl web setup", where: "web-lab" }
+  web: { check: "./labctl web status", setup: "./labctl web setup", where: "web-lab" },
+  websec: { check: "./labctl websec doctor", setup: "./labctl websec setup", where: "web-sec" }
 };
 
 const ACTION_GROUPS: { title: string; ids: string[] }[] = [

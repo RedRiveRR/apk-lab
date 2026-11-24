@@ -37,6 +37,7 @@ export function labOfSection(activeId: string): ActiveLabId | null {
   if (activeId.startsWith("cleanup-")) return "cleanup";
   if (activeId === "firewall" || activeId.startsWith("firewall-")) return "firewall";
   if (activeId === "web-lab") return "web";
+  if (activeId === "web-sec") return "websec";
   return null;
 }
 

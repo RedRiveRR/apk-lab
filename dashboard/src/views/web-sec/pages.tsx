@@ -520,6 +520,40 @@ export default function WebSecLabPage() {
           </Modal>
         ) : null}
 
+        <Section title="Catalogue" description={`${modules.length} checks`}>
+          {modules.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-(--iux-muted-foreground)">
+                    <th className="py-1">Module</th>
+                    <th>Description</th>
+                    <th>Group</th>
+                    <th>Weight</th>
+                    <th>Upstream</th>
+                    <th>Active</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modules.map((module) => (
+                    <tr key={module.id} className="border-t border-(--iux-border)">
+                      <td className="py-1">
+                        {module.label}
+                        <span className="ml-1 font-mono text-[10px] text-(--iux-muted-foreground)">{module.id}</span>
+                      </td>
+                      <td className="text-(--iux-muted-foreground)">{module.description}</td>
+                      <td>{module.group}</td>
+                      <td>{module.weight}</td>
+                      <td className="text-(--iux-muted-foreground)">{module.upstream}</td>
+                      <td>{module.active ? <span className="text-(--iux-muted-foreground)">(active)</span> : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </Section>
+
         {report ? (
           <Section
             title="Findings"

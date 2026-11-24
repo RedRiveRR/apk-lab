@@ -3035,5 +3035,11 @@
   "Bulk validation": "Toplu doğrulama",
   "Targets file": "Hedef dosyası",
   "Score": "Puan",
-  "All targets": "Tüm hedefler"
+  "All targets": "Tüm hedefler",
+  "Active": "Aktif",
+  "Catalogue": "Katalog",
+  "Group": "Grup",
+  "Module": "Modül",
+  "Upstream": "Kaynak proje",
+  "Weight": "Ağırlık"
 }

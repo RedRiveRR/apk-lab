@@ -3035,5 +3035,11 @@
   "Bulk validation": "اعتبارسنجی گروهی",
   "Targets file": "پرونده هدف‌ها",
   "Score": "امتیاز",
-  "All targets": "همه هدف‌ها"
+  "All targets": "همه هدف‌ها",
+  "Active": "فعال",
+  "Catalogue": "کاتالوگ",
+  "Group": "گروه",
+  "Module": "ماژول",
+  "Upstream": "پروژه مبدأ",
+  "Weight": "وزن"
 }

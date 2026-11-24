@@ -3035,5 +3035,11 @@
   "Bulk validation": "التحقق الجماعي",
   "Targets file": "ملف الأهداف",
   "Score": "النقاط",
-  "All targets": "جميع الأهداف"
+  "All targets": "جميع الأهداف",
+  "Active": "نشط",
+  "Catalogue": "الكتالوج",
+  "Group": "المجموعة",
+  "Module": "الوحدة",
+  "Upstream": "المشروع الأصلي",
+  "Weight": "الوزن"
 }

@@ -3035,5 +3035,11 @@
   "Bulk validation": "Validazione collettiva",
   "Targets file": "File dei target",
   "Score": "Punteggio",
-  "All targets": "Tutti i target"
+  "All targets": "Tutti i target",
+  "Active": "Attivo",
+  "Catalogue": "Catalogo",
+  "Group": "Gruppo",
+  "Module": "Modulo",
+  "Upstream": "Progetto a monte",
+  "Weight": "Peso"
 }

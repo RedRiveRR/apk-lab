@@ -3035,5 +3035,11 @@
   "Bulk validation": "Sammelprüfung",
   "Targets file": "Zieldatei",
   "Score": "Score",
-  "All targets": "Alle Ziele"
+  "All targets": "Alle Ziele",
+  "Active": "Aktiv",
+  "Catalogue": "Katalog",
+  "Group": "Gruppe",
+  "Module": "Modul",
+  "Upstream": "Upstream",
+  "Weight": "Gewicht"
 }

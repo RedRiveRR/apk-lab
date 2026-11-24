@@ -782,6 +782,7 @@ export interface WebSecJob {
 export interface WebSecHistoryEntry {
   target: string; scanned_at: string; score: number; grade: string;
   summary: Record<string, number>; preset: string; active: boolean; refused: boolean;
+  name?: string;
 }
 export interface WebSecReportFile { name: string; bytes: number; modified: number }
 export interface WebSecBulkTarget {

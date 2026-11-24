@@ -8,6 +8,7 @@ import json
 import pytest
 
 from websec.cli import main
+from websec.history import History
 
 
 def run(argv):
@@ -59,6 +60,22 @@ def test_setup_creates_private_storage(tmp_path, monkeypatch):
     assert code == 0
     assert (tmp_path / "storage" / "history").is_dir()
     assert "storage ready" in out
+
+
+def test_history_entries_carry_the_report_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
+    history = History()
+    document = {"target": "example.test", "generated_at": "2026-11-24T00:00:00+00:00",
+                "score": 90, "grade": "A", "summary": {"total": 0},
+                "preset": "quick", "active": False, "refused": False}
+    paths = history.append(document)
+    assert paths["name"].endswith("-90.json")
+    entries = history.list("example.test")
+    assert entries[0]["name"] == paths["name"]
+    assert history.load("example.test", paths["name"])["target"] == "example.test"
+    code, out, _ = run(["history", "--target", "example.test", "--json"])
+    assert code == 0
+    assert json.loads(out)["entries"][0]["name"] == paths["name"]
 
 
 @pytest.mark.parametrize("argv", [["scan"], ["nonsense"]])

@@ -256,3 +256,23 @@ test("a bulk job renders a grade per target and a refusal row", async ({ page })
   await expect(page.getByRole("main").getByText("three.test")).toBeVisible();
   expect(sent).toMatchObject({ targets: ["one.test", "two.test", "three.test", "outside.test"], preset: "quick" });
 });
+
+test("a history row opens the stored report in the workbench", async ({ page }) => {
+  await mockStatus(page, status);
+  await page.route("**/api/websec/history*", (route) => route.fulfill({
+    json: { entries: [{
+      target: "example.test", scanned_at: "2026-11-24T00:00:00+00:00", grade: "A", score: 95,
+      summary: { total: 1 }, preset: "standard", active: false, refused: false,
+      name: "20261124T000000Z-95.json"
+    }] }
+  }));
+  await page.route("**/api/websec/report?*", (route) => route.fulfill({
+    json: { content: JSON.stringify(reportWithModuleData), format: "json", name: "20261124T000000Z-95.json" }
+  }));
+
+  await page.goto("/web-sec/");
+  await expect(page.getByRole("main").getByText("2026-11-24T00:00:00+00:00")).toBeVisible();
+  await page.getByRole("main").getByRole("button", { name: "Open" }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
+});

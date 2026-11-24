@@ -15,6 +15,7 @@ import {
   api,
   type WebSecBulkJob,
   type WebSecFinding,
+  type WebSecHistoryEntry,
   type WebSecJob,
   type WebSecModule,
   type WebSecReport,
@@ -113,10 +114,12 @@ export default function WebSecLabPage() {
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<WebSecJob | null>(null);
   const [viewer, setViewer] = useState<{ name: string; format: string; content: string } | null>(null);
-  const [history, setHistory] = useState<{ target: string; scanned_at: string; grade: string; score: number; summary: Record<string, number> }[]>([]);
+  const [history, setHistory] = useState<WebSecHistoryEntry[]>([]);
   const [reports, setReports] = useState<WebSecReportFile[]>([]);
   const [filter, setFilter] = useState<WebSecSeverity | "all">("all");
   const [openModules, setOpenModules] = useState<string[]>([]);
+  const [loadedReport, setLoadedReport] = useState<WebSecReport | null>(null);
+  const [historyTarget, setHistoryTarget] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [bulkTargets, setBulkTargets] = useState<string[]>([]);
@@ -125,7 +128,7 @@ export default function WebSecLabPage() {
   const [bulkJob, setBulkJob] = useState<WebSecBulkJob | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const report = job?.state === "done" ? job.report : undefined;
+  const report = loadedReport ?? (job?.state === "done" ? job.report : undefined);
   const running = job?.state === "running";
   const ready = status?.state === "ready";
   const scopeNote = status?.notes.find((note) => note.startsWith("Scope")) ?? "";
@@ -223,6 +226,11 @@ export default function WebSecLabPage() {
     return modules.filter((module) => module.active && (!picked || picked.includes(module.id)));
   }, [modules, selected]);
 
+  const historyTargets = useMemo(() => [...new Set(history.map((entry) => entry.target))], [history]);
+  const timeline = useMemo(
+    () => (historyTarget ? history.filter((entry) => entry.target === historyTarget) : history),
+    [history, historyTarget]);
+
   const toggleModule = (id: string) => {
     setOpenModules((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -231,6 +239,7 @@ export default function WebSecLabPage() {
   const start = async () => {
     setError("");
     setViewer(null);
+    setLoadedReport(null);
     if (active) {
       if (intrusiveModules.length) {
         setConfirmActive(true);
@@ -299,6 +308,21 @@ export default function WebSecLabPage() {
       setError(errorText(reason));
       setBulkBusy(false);
     }
+  };
+
+  const openHistoryEntry = (entry: WebSecHistoryEntry) => {
+    if (!entry.name) return;
+    setError("");
+    api.websecReport(entry.target, entry.name, "json").then((value) => {
+      try {
+        setLoadedReport(JSON.parse(value.content) as WebSecReport);
+        setFilter("all");
+        setOpenModules([]);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {
+        setError("The stored report is not valid JSON.");
+      }
+    }).catch((reason) => setError(errorText(reason)));
   };
 
   const openReport = async (name: string, format: string) => {
@@ -687,28 +711,40 @@ export default function WebSecLabPage() {
           ) : null}
         </Section>
 
-        <Section title="History">
+        <Section title="History" description={history.length ? `${history.length} runs` : ""}>
           {history.length ? (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-xs text-(--iux-muted-foreground)">
-                  <th className="py-1">Target</th>
-                  <th>Grade</th>
-                  <th>Findings</th>
-                  <th>Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((entry, index) => (
-                  <tr key={`${entry.target}-${entry.scanned_at}-${index}`} className="border-t border-(--iux-border)">
-                    <td className="py-1">{entry.target}</td>
-                    <td className={gradeClass(entry.grade)}>{entry.grade} ({entry.score})</td>
-                    <td>{entry.summary?.total ?? 0}</td>
-                    <td className="text-xs text-(--iux-muted-foreground)">{entry.scanned_at}</td>
-                  </tr>
+            <div className="space-y-3">
+              <label className="flex flex-col gap-1 text-sm sm:w-64">
+                <span className="text-(--iux-muted-foreground)">Target</span>
+                <select
+                  value={historyTarget}
+                  onChange={(event) => setHistoryTarget(event.target.value)}
+                  className="rounded border border-(--iux-border) bg-(--iux-bg) px-2 py-1.5"
+                >
+                  <option value="">All targets</option>
+                  {historyTargets.map((target) => (
+                    <option key={target} value={target}>{target}</option>
+                  ))}
+                </select>
+              </label>
+              <ol>
+                {timeline.map((entry, index) => (
+                  <li key={`${entry.target}-${entry.scanned_at}-${index}`} className="relative border-l border-(--iux-border) pb-3 pl-4 last:pb-0">
+                    <span className="absolute -left-[4.5px] top-1.5 size-2 rounded-full bg-[#f36c21]" aria-hidden="true" />
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span className="font-mono text-xs text-(--iux-muted-foreground)">{entry.scanned_at}</span>
+                      {historyTarget ? null : <span>{entry.target}</span>}
+                      <span className={gradeClass(entry.grade)}>{entry.grade} ({entry.score})</span>
+                      <span className="text-xs text-(--iux-muted-foreground)">{`${entry.summary?.total ?? 0} findings`}</span>
+                      <span className="text-xs text-(--iux-muted-foreground)">{entry.preset}</span>
+                      {entry.name ? (
+                        <button type="button" className="underline" onClick={() => openHistoryEntry(entry)}>Open</button>
+                      ) : null}
+                    </div>
+                  </li>
                 ))}
-              </tbody>
-            </table>
+              </ol>
+            </div>
           ) : (
             <Empty>No scans yet.</Empty>
           )}

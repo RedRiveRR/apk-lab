@@ -42,6 +42,8 @@ class History:
     def append(self, document: Dict[str, object]) -> Dict[str, str]:
         """Store the summary line and the full report; return both paths."""
         target = str(document.get("target", ""))
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        name = f"{stamp}-{document.get('score', 0)}.json"
         summary = {
             "target": target,
             "scanned_at": document.get("generated_at"),
@@ -51,6 +53,7 @@ class History:
             "preset": document.get("preset"),
             "active": document.get("active"),
             "refused": document.get("refused"),
+            "name": name,
         }
         path = self._history_file(target)
         lines: List[str] = []
@@ -65,8 +68,6 @@ class History:
             handle.write("\n".join(lines) + "\n")
         os.chmod(path, 0o600)
         directory = self.reports_dir(target)
-        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        name = f"{stamp}-{document.get('score', 0)}.json"
         report_path = os.path.join(directory, name)
         with open(report_path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, ensure_ascii=False, indent=2)

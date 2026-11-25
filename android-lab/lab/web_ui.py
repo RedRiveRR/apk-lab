@@ -59,6 +59,10 @@ try:
 except ImportError:
     web_api = None
 try:
+    import winapps_guard  # noqa: E402  (console/winapps_guard.py: policy gate in front of the Windows app mirror)
+except ImportError:
+    winapps_guard = None
+try:
     import websec_api  # noqa: E402  (console/websec_api.py: Web Sec Lab scans and reports)
 except ImportError:
     websec_api = None
@@ -519,6 +523,45 @@ class LabHttpHandler(BaseHTTPRequestHandler):
         body = open(not_found, "rb").read() if os.path.isfile(not_found) else b"Not found"
         self._send_bytes(404, body, "text/html; charset=utf-8")
 
+    def _winapps_get(self, parts: list):
+        """Read-only Windows app mirror endpoints, all served to the human audience through the guard."""
+        if winapps_guard is None:
+            self._json(501, {"error": "The Windows app mirror guard (console/winapps_guard.py) is not installed"})
+            return
+        try:
+            if parts[3] == "apps" and len(parts) == 4:
+                self._json(200, winapps_guard.list_windows(REPO_ROOT, "human"))
+            elif parts[3] == "doctor":
+                self._json(200, winapps_guard.doctor(REPO_ROOT, "human"))
+            elif parts[3] == "policy":
+                self._json(200, winapps_guard.policy_summary(REPO_ROOT))
+            elif parts[3] == "audit":
+                self._json(200, winapps_guard.audit_rows(200))
+            else:
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
+                expected_token = (query.get("windowToken") or [None])[0]
+                self._send_bytes(200, winapps_guard.screenshot(REPO_ROOT, parts[4], "human",
+                                                               expected_token=expected_token),
+                                 "image/png", cache="no-store")
+        except winapps_guard.GuardError as exc:
+            status = 403 if exc.code == "RESTRICTED_WINDOW" else 400
+            self._json(status, {"error": str(exc), "code": exc.code})
+        except winapps.WinAppError as exc:  # NOT_SUPPORTED off Windows, WINDOW_CHANGED for a stale token
+            self._json(exc.status, {"error": str(exc), "code": exc.code})
+
+    def _winapps_allowed(self, window_id: object) -> bool:
+        """The policy gate in front of UIA reads, search, the stream and input; False after replying."""
+        if winapps_guard is None:
+            self._json(501, {"error": "The Windows app mirror guard (console/winapps_guard.py) is not installed"})
+            return False
+        try:
+            winapps_guard.require_window(REPO_ROOT, window_id, "human")
+            return True
+        except winapps_guard.GuardError as exc:
+            status = 403 if exc.code in ("RESTRICTED_WINDOW", "APP_NOT_ALLOWED") else 409 if exc.code == "WINDOW_GONE" else 400
+            self._json(status, {"error": str(exc), "code": exc.code})
+            return False
+
     def _lab_get(self, path: str):
         parts = [p for p in path.split("/") if p]
         if path == "/api/host":
@@ -594,33 +637,15 @@ class LabHttpHandler(BaseHTTPRequestHandler):
             self._json(200, oslab.macos_ax_focused(REPO_ROOT, {"pid": parts[4]}))
         elif len(parts) == 6 and parts[:4] == ["api", "labs", "macos", "session"] and parts[5] == "elements":
             self._json(200, oslab.macos_session_elements(REPO_ROOT, parts[4]))
-        elif len(parts) == 4 and parts[:2] == ["api", "labs"] and parts[2] == "winapps" and parts[3] == "apps":
-            # Native Windows app mirror is read-only and independent of the Windows VM lifecycle.
-            if winapps is None:
-                self._json(501, {"error": "The Windows app mirror module (console/winapps.py) is not installed"})
-                return
-            self._json(200, winapps.winapps_windows())
-        elif len(parts) == 4 and parts[:2] == ["api", "labs"] and parts[2] == "winapps" and parts[3] == "doctor":
-            if winapps is None:
-                self._json(501, {"error": "The Windows app mirror module (console/winapps.py) is not installed"})
-                return
-            self._json(200, winapps.doctor())
-        elif len(parts) == 6 and parts[:2] == ["api", "labs"] and parts[2] == "winapps" and parts[3] == "apps" and parts[5] == "screenshot":
-            if winapps is None:
-                self._json(501, {"error": "The Windows app mirror module (console/winapps.py) is not installed"})
-                return
-            try:
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
-                expected_token = (query.get("windowToken") or [None])[0]
-                self._send_bytes(
-                    200, winapps.winapps_window_screenshot(parts[4], expected_token),
-                    "image/png", cache="no-store",
-                )
-            except winapps.WinAppError as exc:
-                self._json(exc.status, {"error": str(exc), "code": exc.code})
+        elif parts[:3] == ["api", "labs", "winapps"] and (
+                parts[3:] in (["apps"], ["doctor"], ["policy"], ["audit"])
+                or (len(parts) == 6 and parts[3] == "apps" and parts[5] == "screenshot")):
+            self._winapps_get(parts)
         elif len(parts) == 6 and parts[:4] == ["api", "labs", "winapps", "apps"] and parts[5] == "elements":
             if winapps is None:
                 self._json(501, {"error": "The Windows app mirror module (console/winapps.py) is not installed"})
+                return
+            if not self._winapps_allowed(parts[4]):
                 return
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
             revision = (query.get("revision") or [None])[0]
@@ -632,6 +657,8 @@ class LabHttpHandler(BaseHTTPRequestHandler):
         elif len(parts) == 6 and parts[:4] == ["api", "labs", "winapps", "apps"] and parts[5] == "search":
             if winapps is None:
                 self._json(501, {"error": "The Windows app mirror module (console/winapps.py) is not installed"})
+                return
+            if not self._winapps_allowed(parts[4]):
                 return
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
             search_query = (query.get("q") or [""])[0]
@@ -646,7 +673,8 @@ class LabHttpHandler(BaseHTTPRequestHandler):
                 return
             self._json(200, winapps.winapps_control_state())
         elif len(parts) == 6 and parts[:4] == ["api", "labs", "winapps", "apps"] and parts[5] == "stream":
-            self._winapps_stream(parts[4])
+            if self._winapps_allowed(parts[4]):
+                self._winapps_stream(parts[4])
         elif path == "/api/jobs":
             self._json(200, {"jobs": JOBS.list()})
         elif len(parts) == 3 and parts[:2] == ["api", "jobs"]:
@@ -900,10 +928,13 @@ class LabHttpHandler(BaseHTTPRequestHandler):
                 if path == "/api/labs/winapps/control":
                     data = self._read_json()
                     result = winapps.winapps_control_arm(data.get("armed"), data.get("owner"))
-                elif path == "/api/labs/winapps/click":
-                    result = winapps.winapps_control_click(self._read_json())
-                elif path == "/api/labs/winapps/input":
-                    result = winapps.winapps_control_input(self._read_json())
+                elif path in ("/api/labs/winapps/click", "/api/labs/winapps/input"):
+                    data = self._read_json()
+                    # Input reaches only a window the policy allows; restricted windows never get it.
+                    if not self._winapps_allowed(data.get("windowId") if isinstance(data, dict) else None):
+                        return
+                    action = winapps.winapps_control_click if path.endswith("/click") else winapps.winapps_control_input
+                    result = action(data)
                 elif path == "/api/labs/winapps/stop":
                     result = winapps.winapps_panic_stop()
                 else:

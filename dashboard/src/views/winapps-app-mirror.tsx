@@ -275,6 +275,8 @@ async function pumpPngStream(
 }
 
 function labelFor(app: WinApp): string {
+  // A lock instead of a word: option text is not translated, the hint below the picker is.
+  if (app.restricted) return `${app.app} \u{1F512}`;
   const title = app.title ? ` — ${app.title.slice(0, 40)}` : "";
   return `${app.app}${title}`;
 }
@@ -364,7 +366,10 @@ export function WinAppsPanel() {
   } | null>(null);
 
   const windows = data?.windows ?? [];
-  const selected = windows.find((window) => window.windowId === windowId) ?? windows[0] ?? null;
+  // Restricted windows are listed so people know they exist, but are never selected, captured,
+  // streamed or sent input; the console refuses them too (console/winapps_guard.py).
+  const usable = windows.filter((window) => !window.restricted);
+  const selected = usable.find((window) => window.windowId === windowId) ?? usable[0] ?? null;
   selectedWindowIdRef.current = selected?.windowId ?? null;
   selectedWindowTokenRef.current = selected?.windowToken ?? null;
   const requestElementsRef = useRef<() => Promise<WinElementsInfo | null>>(() => Promise.resolve(null));
@@ -931,6 +936,8 @@ export function WinAppsPanel() {
         <Empty>{data.reason ?? "The Windows app mirror is not available here."}</Empty>
       ) : windows.length === 0 ? (
         <Empty>No visible desktop application windows were found.</Empty>
+      ) : usable.length === 0 ? (
+        <Empty>Some windows are restricted and cannot be mirrored.</Empty>
       ) : selected ? (
         <>
           <Field label="Window">
@@ -941,10 +948,13 @@ export function WinAppsPanel() {
               aria-label="Window"
             >
               {windows.map((window) => (
-                <option key={window.windowId} value={window.windowId}>{labelFor(window)}</option>
+                <option key={window.windowId} value={window.windowId} disabled={window.restricted}>{labelFor(window)}</option>
               ))}
             </select>
           </Field>
+          {usable.length < windows.length ? (
+            <p className="text-xs text-(--iux-muted-foreground)">Some windows are restricted and cannot be mirrored.</p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="iux-btn" data-variant="outline" onClick={() => {
               reload();

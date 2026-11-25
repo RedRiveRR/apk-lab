@@ -21,7 +21,7 @@ import zlib
 from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 PW_RENDERFULLCONTENT = 0x00000002
 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
@@ -671,16 +671,29 @@ def _black_frame(bgra: bytes) -> bool:
     return not any(bgra[0::16]) and not any(bgra[1::16]) and not any(bgra[2::16])
 
 
+def window_info(window_id: int) -> dict[str, Any] | None:
+    """The current on-screen window for one id (same filters as the inventory), or None when gone.
+
+    The policy gate (console/winapps_guard.py) reads the title through this at the moment of an
+    action, so a window that turned restricted after the inventory is caught.
+    """
+    if sys.platform != "win32" or _user32 is None:
+        return None
+    if isinstance(window_id, bool) or not isinstance(window_id, int) or not 0 < window_id <= 0xFFFFFFFF:
+        return None
+    return _window(window_id) if _user32.GetAncestor(window_id, GA_ROOT) == window_id else None
+
+
 def _validated_window(window_id: int | str) -> tuple[int, dict[str, Any]]:
     try:
         hwnd = int(window_id)
     except (TypeError, ValueError):
-        raise WinAppError("Invalid window id") from None
+        raise WinAppError("Invalid window id", code="INVALID_WINDOW") from None
     if not 0 < hwnd <= 0xFFFFFFFF:
-        raise WinAppError("Invalid window id")
-    window = _window(hwnd) if _user32.GetAncestor(hwnd, GA_ROOT) == hwnd else None
+        raise WinAppError("Invalid window id", code="INVALID_WINDOW")
+    window = window_info(hwnd)
     if window is None:
-        raise WinAppError("That window is not on screen anymore; refresh the mirror")
+        raise WinAppError("That window is not on screen anymore; refresh the mirror", code="WINDOW_GONE")
     if window["width"] * window["height"] > MAX_CAPTURE_PIXELS:
         raise WinAppError("That window is too large to capture")
     return hwnd, window
@@ -2062,7 +2075,8 @@ def winapps_control_input(data: dict[str, Any]) -> dict[str, Any]:
         raise
 
 
-def doctor() -> dict[str, Any]:
+def doctor(can_probe: Callable[[dict[str, Any]], bool] | None = None,
+           capture: Callable[[int], bytes] | None = None) -> dict[str, Any]:
     """Desktop session, this console's elevation and one live capture probe.
 
     `elevated` is None when Windows would not report this process's own token. A standard-user
@@ -2093,9 +2107,12 @@ def doctor() -> dict[str, Any]:
     result["windows"] = len(windows)
     result["available"] = bool(windows)
     reason: str | None = None
-    for window in windows[:8]:
+    # The caller may exclude windows that must never be captured, even for a probe.
+    candidates = [window for window in windows if can_probe is None or can_probe(window)]
+    for window in candidates[:8]:
         try:
-            result["capture"] = winapps_window_screenshot(window["windowId"]).startswith(b"\x89PNG")
+            grab = capture or winapps_window_screenshot  # the caller may supply a policy-checked capture
+            result["capture"] = grab(window["windowId"]).startswith(b"\x89PNG")
             break
         except WinAppError as exc:
             reason = str(exc)

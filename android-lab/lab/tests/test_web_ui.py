@@ -124,42 +124,66 @@ def test_health_capabilities_are_served_by_console(web_server):
     assert any(item.get("lab") == "ios" for group in data["groups"] for item in group["items"])
 
 
-def test_winapps_endpoint_serves_the_read_only_inventory(web_server, monkeypatch):
+def _no_policy(monkeypatch, tmp_path):
+    monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(tmp_path / "absent-policy.json"))
+
+
+def _http_error(url):
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(url)
+    return caught.value.code, json.loads(caught.value.read().decode("utf-8"))
+
+
+def test_winapps_endpoint_serves_the_read_only_inventory(web_server, monkeypatch, tmp_path):
     import web_ui
 
+    _no_policy(monkeypatch, tmp_path)
     fixture = {"available": True, "windows": [], "reason": None}
-    monkeypatch.setattr(web_ui.winapps, "winapps_windows", lambda: fixture)
+    monkeypatch.setattr(web_ui.winapps_guard.winapps, "winapps_windows", lambda: fixture)
     data = json.loads(urllib.request.urlopen(f"{web_server}/api/labs/winapps/apps").read().decode("utf-8"))
     assert data == fixture
 
-    monkeypatch.setattr(web_ui, "winapps", None)
-    try:
-        status = urllib.request.urlopen(f"{web_server}/api/labs/winapps/apps").status
-    except urllib.error.HTTPError as e:
-        status = e.code
-    assert status == 501
+
+def test_winapps_endpoints_are_501_without_the_guard_module(web_server, monkeypatch):
+    import web_ui
+
+    monkeypatch.setattr(web_ui, "winapps_guard", None)
+    for path in ("apps", "apps/7/screenshot", "doctor", "policy", "audit"):
+        code, body = _http_error(f"{web_server}/api/labs/winapps/{path}")
+        assert code == 501 and "not installed" in body["error"]
 
 
-def test_winapps_screenshot_serves_a_png_and_reports_stale_windows(web_server, monkeypatch):
+def test_winapps_screenshot_serves_a_png_and_maps_guard_errors(web_server, monkeypatch):
     import web_ui
 
     png = b"\x89PNG\r\n\x1a\n"
-    screenshots = []
-    monkeypatch.setattr(web_ui.winapps, "winapps_window_screenshot",
-                        lambda window_id, token=None: screenshots.append((window_id, token)) or png)
+    seen = {}
+
+    def fake(root, window_id, audience, **kwargs):
+        seen.update(window_id=window_id, audience=audience, expected_token=kwargs.get("expected_token"))
+        return png
+
+    monkeypatch.setattr(web_ui.winapps_guard, "screenshot", fake)
     reply = urllib.request.urlopen(f"{web_server}/api/labs/winapps/apps/7/screenshot?windowToken=token-a")
     assert reply.status == 200 and reply.headers["Content-Type"] == "image/png"
     assert reply.headers["Cache-Control"] == "no-store" and reply.read() == png
-    assert screenshots == [("7", "token-a")]
+    assert seen == {"window_id": "7", "audience": "human", "expected_token": "token-a"}
 
-    def stale(_window_id, _token=None):
-        raise web_ui.winapps.WinAppError("That window is not on screen anymore; refresh the mirror")
+    def changed(root, window_id, audience, **kwargs):
+        raise web_ui.winapps.WinAppError("The selected window changed; refresh the mirror",
+                                         status=409, code="WINDOW_CHANGED")
 
-    monkeypatch.setattr(web_ui.winapps, "winapps_window_screenshot", stale)
-    with pytest.raises(urllib.error.HTTPError) as caught:
-        urllib.request.urlopen(f"{web_server}/api/labs/winapps/apps/7/screenshot")
-    assert caught.value.code == 400
-    assert "not on screen" in json.loads(caught.value.read().decode("utf-8"))["error"]
+    monkeypatch.setattr(web_ui.winapps_guard, "screenshot", changed)
+    got, body = _http_error(f"{web_server}/api/labs/winapps/apps/7/screenshot?windowToken=old")
+    assert got == 409 and body["code"] == "WINDOW_CHANGED"
+
+    for code, status in (("WINDOW_GONE", 400), ("INVALID_WINDOW", 400), ("RESTRICTED_WINDOW", 403)):
+        def refuse(root, window_id, audience, _code=code, **kwargs):
+            raise web_ui.winapps_guard.GuardError("refused", _code)
+
+        monkeypatch.setattr(web_ui.winapps_guard, "screenshot", refuse)
+        got, body = _http_error(f"{web_server}/api/labs/winapps/apps/7/screenshot")
+        assert got == status and body == {"error": "refused", "code": code}
 
 
 def test_winapps_stream_serves_bounded_multipart_frames_without_caching(web_server, monkeypatch):
@@ -227,18 +251,34 @@ def test_winapps_stream_is_unavailable_without_the_native_module(web_server, mon
     assert caught.value.code == 501
 
 
-def test_winapps_doctor_endpoint_serves_the_probe_and_is_501_without_the_module(web_server, monkeypatch):
+def test_winapps_doctor_endpoint_serves_the_probe(web_server, monkeypatch):
     import web_ui
 
     probe = {"available": True, "desktop": True, "elevated": False, "capture": True, "windows": 1}
-    monkeypatch.setattr(web_ui.winapps, "doctor", lambda: probe)
+    monkeypatch.setattr(web_ui.winapps_guard, "doctor", lambda root, audience="agent", **kw: probe)
     data = json.loads(urllib.request.urlopen(f"{web_server}/api/labs/winapps/doctor").read().decode("utf-8"))
     assert data == probe
 
-    monkeypatch.setattr(web_ui, "winapps", None)
-    with pytest.raises(urllib.error.HTTPError) as caught:
-        urllib.request.urlopen(f"{web_server}/api/labs/winapps/doctor")
-    assert caught.value.code == 501
+
+def test_winapps_policy_endpoint_serves_counts_only(web_server, monkeypatch, tmp_path):
+    policy = tmp_path / "policy.json"
+    policy.write_text(json.dumps({"allowedApps": ["Notepad"], "restrictedTitles": ["a", "b"]}))
+    monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(policy))
+    text = urllib.request.urlopen(f"{web_server}/api/labs/winapps/policy").read().decode("utf-8")
+    data = json.loads(text)
+    assert (data["allowedApps"], data["restrictedTitles"], data["exists"]) == (1, 2, True)
+    assert "Notepad" not in text
+
+
+def test_winapps_audit_endpoint_serves_rows(web_server, monkeypatch, tmp_path):
+    import web_ui
+
+    monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
+    web_ui.winapps_guard._reset_audit()
+    web_ui.winapps_guard.audit(None, "list", audience="agent", tool="winapps_apps")
+    data = json.loads(urllib.request.urlopen(f"{web_server}/api/labs/winapps/audit").read().decode("utf-8"))
+    assert [row["kind"] for row in data["rows"]] == ["list"] and data["recording"] is True
+    web_ui.winapps_guard._reset_audit()
 
 
 def test_winapps_uia_routes_return_elements_search_and_explicit_errors(web_server, monkeypatch):
@@ -467,3 +507,31 @@ def test_frida_inventory_refuses_targets_outside_the_lab(web_server, monkeypatch
         assert refused.value.code == 400
         assert "error" in json.load(refused.value)
     assert fake.calls == []
+
+
+def test_winapps_restricted_windows_are_refused_on_uia_stream_and_input_routes(web_server, monkeypatch):
+    """The policy gate also stands in front of the UIA, search, stream and input routes from #316/#318."""
+    import web_ui
+
+    called = []
+    monkeypatch.setattr(web_ui.winapps, "winapps_window_elements", lambda *a, **k: called.append("elements") or {})
+    monkeypatch.setattr(web_ui.winapps, "winapps_search_elements", lambda *a, **k: called.append("search") or {})
+    monkeypatch.setattr(web_ui.winapps, "winapps_window_stream", lambda *a, **k: called.append("stream") or iter(()))
+    monkeypatch.setattr(web_ui.winapps, "winapps_control_click", lambda data: called.append("click") or {})
+    monkeypatch.setattr(web_ui.winapps, "winapps_control_input", lambda data: called.append("input") or {})
+
+    def restricted(root, window_id, audience, **kwargs):
+        raise web_ui.winapps_guard.GuardError("That window is restricted and cannot be mirrored", "RESTRICTED_WINDOW")
+
+    monkeypatch.setattr(web_ui.winapps_guard, "require_window", restricted)
+    for path in ("apps/7/elements", "apps/7/search?q=save", "apps/7/stream"):
+        code, body = _http_error(f"{web_server}/api/labs/winapps/{path}")
+        assert code == 403 and body["code"] == "RESTRICTED_WINDOW"
+    for path in ("click", "input"):
+        request = urllib.request.Request(f"{web_server}/api/labs/winapps/{path}", method="POST",
+                                         data=json.dumps({"windowId": 7}).encode(),
+                                         headers={"Content-Type": "application/json", "X-OSLab": "1"})
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request)
+        assert caught.value.code == 403
+    assert called == []

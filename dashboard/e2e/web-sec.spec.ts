@@ -134,7 +134,7 @@ test("a ready lab scans a target and shows the graded report", async ({ page }) 
 
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
   await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
-  await expect(page.getByRole("main").getByText("example.test", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("main").getByText(/^example\.test · /)).toBeVisible();
   expect(sent[0]).toMatchObject({ target: "example.test", preset: "standard", scheme: "https", active: true });
 });
 
@@ -362,9 +362,10 @@ test("a running scan shows live per-check progress", async ({ page }) => {
   await page.goto("/web-sec/");
   await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
   await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
-  await expect(page.getByRole("main").getByText("DNS records")).toBeVisible();
-  await expect(page.getByRole("main").getByText("running", { exact: true })).toBeVisible();
-  await expect(page.getByRole("main").getByText("security_analysis")).toBeVisible();
+  const progressList = page.getByRole("main").locator("ul[aria-live]");
+  await expect(progressList.getByText("DNS records")).toBeVisible();
+  await expect(progressList.getByText("running", { exact: true })).toBeVisible();
+  await expect(progressList.getByText("security_analysis")).toBeVisible();
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
 });
 
@@ -379,12 +380,14 @@ test("saved choices load from the engine store and every change is written back"
   await page.goto("/web-sec/");
   await expect(page.getByRole("main").getByRole("textbox", { name: "Target" })).toHaveValue("saved.test");
   await openRow(page, "Scan options");
-  await expect(page.getByRole("main").getByLabel("Preset", { exact: true })).toHaveValue("quick");
+  const presetSelect = page.locator("#websec-options select").first();
+  await expect(presetSelect).toHaveValue("quick");
   await expect(page.getByRole("main").getByLabel("Request timeout (s)")).toHaveValue("12");
   expect(posted).toHaveLength(0); // loading is not a change
 
-  await page.getByRole("main").getByLabel("Preset", { exact: true }).selectOption("full");
-  await expect(page.getByRole("main").getByText("Saved on this computer")).toBeVisible();
+  await presetSelect.selectOption("full");
+  await expect.poll(() => posted.length).toBe(1);
+  await expect(page.getByRole("main").getByText("Saved on this computer", { exact: true })).toBeVisible();
   // an id the catalogue no longer lists is kept in the store, never deleted
   expect(posted.at(-1)).toMatchObject({ scan: { preset: "full", modules: ["dns_records", "retired_check"] }, bulk: { preset: "standard" } });
 
@@ -699,11 +702,11 @@ test("the confirmation dialog shows the engine's plan and blocks a refused targe
 test("the sidebar links straight to the workbench rows", async ({ page }) => {
   await mockStatus(page, status);
   await page.goto("/web-sec/");
-  const nav = page.getByRole("navigation").first();
-  await expect(nav.getByRole("link", { name: "Workbench" })).toHaveAttribute("aria-current", "page");
-  await nav.getByRole("link", { name: "Monitor" }).click();
+  const nav = page.getByRole("navigation", { name: "Sections" });
+  await expect(nav.getByRole("button", { name: "Workbench" })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "Monitor" }).click();
   await expect(page).toHaveURL(/\/web-sec\/#websec-monitor$/);
   await expect(page.locator("#websec-monitor")).toHaveAttribute("open", "");
-  await nav.getByRole("link", { name: "Guides" }).click();
+  await nav.getByRole("button", { name: "Guides" }).click();
   await expect(page.locator("#websec-guides")).toHaveAttribute("open", "");
 });

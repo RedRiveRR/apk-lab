@@ -93,22 +93,25 @@ Implemented:
   form, exports, active-scan dialog, per-target history timeline, live per-check
   progress, pacing overrides, mobile pass at 390 px; dedicated public page at
   `/labs/websec/`; 8 locales kept in step (3,015 keys).
-- One-click pass (uncommitted at the time of writing): the workbench follows the
-  one-click standard (primary Scan with shortcut `S`, collapsed rows with live
-  summaries), choices persist in `web-sec/storage/preferences.json` through the
-  engine, Compare runs and SecOps guide modals exist, and `console/mcp_websec.py`
-  gives agents 14 tools on the same API (review never scans; intrusive scans need
-  `confirm: true`). Engine 83 tests, console + MCP 34 tests (with the Cleanup MCP
-  suite), `npm run check`, `npm run test:i18n` (3,096 keys), `npm run build`,
-  `lat check`.
+- One-click workbench: primary Scan (shortcut `S`) and collapsed rows with live
+  summaries (Scan options, Reports, Compare runs, Monitor, Bulk validation, History,
+  Catalogue, Guides, Environment); choices saved by the engine
+  (`storage/preferences.json`); plan-backed active-scan dialog; SecOps guides with
+  Reference tables; dedicated panels for 14 checks; PDF/DOCX/JSON/SARIF/HTML/Markdown
+  downloads; History with statistics, favourites, delete and clear.
+- Engine additions: `plan`, `compare` (`--fail-on-new`), `prefs`, `guides`, `runs`,
+  `monitor`; CI gates (`--fail-on`, `--baseline`, `--summary`, `web-sec/action.yml`);
+  CWE/OWASP labels; report cover; `bulk -` and `--concurrency`; 25 secret patterns
+  with an entropy floor and a DOM-XSS taint pass; PDF/DOCX export; the opt-in passive
+  monitor with native notifications.
+- `console/mcp_websec.py`: 21 MCP tools on the same console API; reviews never
+  scan; intrusive scans, deletes and clears need `confirm: true`.
 - `web-sec/TODO.md` records what is done and what remains.
 
-Verified in this session: engine 66 tests, console 19 tests, `npm run check`,
-`npm run test:i18n`, `npm run test:tooling`, `lat check`, `npm run build` (dist
-restored), and `scripts/run-tests.sh --changed` (14 stages passed, 0 failed; the
-only skips are cargo-absent and dist-freshness-by-design). The e2e suite has
-**not** run since the feature work — 10 specs now exist in `web-sec.spec.ts` and
-they need a run in an owner-approved mode before landing (see below).
+Verified at the last commit: engine 140 tests; console + MCP 39 tests (with the
+Cleanup MCP suite); `npm run check`; `npm run test:i18n` (3,212 keys); `npm run
+build` (dist restored); `lat check`. The e2e spec now has 19 cases and has **not**
+run: the owner holds e2e until the pre-merge stage.
 
 ## 4. Rules that must not change
 
@@ -131,21 +134,22 @@ they need a run in an owner-approved mode before landing (see below).
 
 ## 5. Remaining work
 
-The full list is in `web-sec/TODO.md` under **Remaining**: UX-standard leftovers
-(notifications outside the window, the visual pass, plan-backed confirmation),
-engine port gaps (CI gates, CWE/OWASP mapping, monitor + notify, content-scan
-depth, report cover and target lists), WebQ gaps (dedicated panels, PDF/DOCX,
-history management, reference pages, React signatures), two documentation
-items and the landing steps.
+Every feature and UX item in `web-sec/TODO.md` is done, excluded with a recorded
+reason, or marked optional. What is left is verification and landing:
 
-The owner holds e2e until every other item is done, then runs it once before the
-merge.
+1. The browser half of the visual pass: 390 px and tablet, 200% zoom, both themes,
+   `fa`/`ar` right-to-left (the code half is done).
+2. E2e in an owner-approved mode: the Web Sec spec, then `--full` once before the PR,
+   plus `--crawl --widths desktop,phone` for the visual pass.
+3. Push and open the PR.
+
+Optional: CVE lookup and check selection in the bulk form.
 
 Verification expected before landing:
 
 ```bash
-cd web-sec/engine && python3 -m pytest -q        # 83 tests
-cd android-lab/lab && ../../.venv-test/bin/python -m pytest tests/test_websec_console.py tests/test_mcp_websec.py -q  # 23 + 6 tests
+cd web-sec/engine && python3 -m pytest -q        # 140 tests
+cd android-lab/lab && ../../.venv-test/bin/python -m pytest tests/test_websec_console.py tests/test_mcp_websec.py -q  # 34 tests
 cd dashboard && npm run check && npm run test:i18n && npm run build && git restore dashboard/dist
 lat check
 scripts/run-tests.sh --changed

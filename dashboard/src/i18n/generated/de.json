@@ -3229,5 +3229,22 @@
   "Clear this target's history?": "Verlauf dieses Ziels löschen?",
   "Clear all history?": "Gesamten Verlauf löschen?",
   "PDF": "PDF",
-  "DOCX": "DOCX"
+  "DOCX": "DOCX",
+  "Expected": "Erwartet",
+  "Header": "Header",
+  "Headers the posture check reads": "Header, die die Haltungsprüfung liest",
+  "Ports the exposure check connects to (intrusive, confirmed per scan)": "Ports, mit denen sich die Expositionsprüfung verbindet (invasiv, je Scan bestätigt)",
+  "Reference": "Referenz",
+  "Database": "Datenbank",
+  "Plain-text protocol": "Klartextprotokoll",
+  "Admin or alternate": "Admin oder Alternative",
+  "Standard service": "Standarddienst",
+  "Present on HTTPS, max-age of at least 180 days, includeSubDomains.": "Auf HTTPS vorhanden, max-age mindestens 180 Tage, includeSubDomains.",
+  "Present, no wildcard origin, no inline or evaluated script.": "Vorhanden, kein Platzhalter-Origin, kein Inline- oder ausgewertetes Skript.",
+  "DENY or SAMEORIGIN, or a CSP frame-ancestors list.": "DENY oder SAMEORIGIN, oder eine CSP-frame-ancestors-Liste.",
+  "nosniff.": "nosniff.",
+  "A policy that does not send full URLs to other origins.": "Eine Richtlinie, die keine vollständigen URLs an andere Origins sendet.",
+  "Present, turning off features the site does not use.": "Vorhanden, schaltet ungenutzte Funktionen ab.",
+  "Never * together with credentials.": "Niemals * zusammen mit Anmeldedaten.",
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; HttpOnly für Sitzungs-Cookies; SameSite, None nur mit Secure."
 }

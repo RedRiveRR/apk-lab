@@ -57,7 +57,11 @@ const guides: WebSecGuides = {
     { id: "scope", title: "Scope and authorization", checks: [], points: ["Scan only hosts listed in scope.json, and only with written permission from their owner."], refs: [] },
     { id: "headers", title: "Security headers and cookies", checks: ["security_analysis"], points: ["Mark session cookies Secure, HttpOnly and SameSite."], refs: ["https://owasp.org/www-project-secure-headers/"] }
   ],
-  byCheck: { security_analysis: "headers" }
+  byCheck: { security_analysis: "headers" },
+  reference: {
+    ports: [{ port: 6379, service: "Redis", kind: "database" }],
+    headers: [{ header: "Strict-Transport-Security", expect: "Present on HTTPS, max-age of at least 180 days, includeSubDomains." }]
+  }
 };
 
 const monitorOff: WebSecMonitorStatus = {
@@ -480,6 +484,10 @@ test("SecOps guides open as a modal from a check and from the header", async ({ 
   await page.getByRole("main").getByRole("button", { name: "SecOps guides" }).click();
   await expect(dialog.getByRole("heading", { name: "Scope and authorization" })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Security headers and cookies" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Reference" }).click();
+  await expect(dialog.getByRole("cell", { name: "Strict-Transport-Security" })).toBeVisible();
+  await expect(dialog.getByRole("cell", { name: "Redis" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Scope and authorization" })).toHaveCount(0);
 });
 
 test("every workbench ability is still listed and each row opens", async ({ page }) => {

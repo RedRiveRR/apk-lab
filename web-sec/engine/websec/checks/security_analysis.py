@@ -13,6 +13,17 @@ from ..models import Finding
 from ..registry import module
 
 PENALTY = {"critical": 30, "high": 15, "medium": 7, "low": 3, "info": 0}
+# What this check expects of each response header; the guides' reference table reads it.
+HEADERS_CHECKED = (
+    ("Strict-Transport-Security", "Present on HTTPS, max-age of at least 180 days, includeSubDomains."),
+    ("Content-Security-Policy", "Present, no wildcard origin, no inline or evaluated script."),
+    ("X-Frame-Options / frame-ancestors", "DENY or SAMEORIGIN, or a CSP frame-ancestors list."),
+    ("X-Content-Type-Options", "nosniff."),
+    ("Referrer-Policy", "A policy that does not send full URLs to other origins."),
+    ("Permissions-Policy", "Present, turning off features the site does not use."),
+    ("Access-Control-Allow-Origin", "Never * together with credentials."),
+    ("Set-Cookie", "Secure; HttpOnly for session cookies; SameSite, and None only with Secure."),
+)
 SESSION_HINT = ("sess", "token", "auth", "jwt", "sid", "login", "remember")
 
 

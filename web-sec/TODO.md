@@ -128,8 +128,9 @@ For locations, the state of the branch and the continuation checklist, read
    base64 download, workbench buttons. The PDF uses the standard fonts (Latin-1) and says so.
 3. ~~History management~~ — done: favourites (kept through pruning), delete one or
    several, clear a target or everything, statistics; CLI `runs`, console, MCP, UI.
-4. Reference pages (ports, headers, status codes, domains): fold into the guides or
-   record the exclusion.
+4. ~~Reference pages~~ — ports and headers folded into the guides' Reference tables
+   (generated from `port_exposure` and `security_analysis`); status codes and domains
+   recorded as excluded.
 5. ~~React signatures view~~ — excluded: it is the honeypot's exploit-signature
    catalogue (see `knowledge/upstream.md`); `react_exposure` has its own panel.
 

@@ -106,10 +106,24 @@ GUIDES: List[Dict[str, object]] = [
 ]
 
 
+def reference() -> Dict[str, object]:
+    """What the engine looks at, read from the checks' own tables so it cannot drift
+    (the WebQ port and header roadmaps)."""
+    from .checks.port_exposure import ADMIN_PORTS, DATABASES, PLAINTEXT, SERVICES
+    from .checks.security_analysis import HEADERS_CHECKED
+    from .config import DEFAULT_PORTS
+    kinds = (("database", DATABASES), ("plaintext", PLAINTEXT), ("admin", ADMIN_PORTS), ("service", SERVICES))
+    ports = []
+    for port in DEFAULT_PORTS:
+        kind, name = next(((kind, table[port]) for kind, table in kinds if port in table), ("service", ""))
+        ports.append({"port": port, "service": name, "kind": kind})
+    return {"ports": ports, "headers": [{"header": header, "expect": expect} for header, expect in HEADERS_CHECKED]}
+
+
 def guides() -> Dict[str, object]:
-    """The guide list plus a check id → guide id index."""
+    """The guide list, a check id → guide id index, and the reference tables."""
     index = {check: str(guide["id"]) for guide in GUIDES for check in guide["checks"]}  # type: ignore[union-attr]
-    return {"guides": [dict(guide) for guide in GUIDES], "byCheck": index}
+    return {"guides": [dict(guide) for guide in GUIDES], "byCheck": index, "reference": reference()}
 
 
 __all__ = ["GUIDES", "guides"]

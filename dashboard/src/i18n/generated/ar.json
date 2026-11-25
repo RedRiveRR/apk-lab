@@ -3229,5 +3229,22 @@
   "Clear this target's history?": "مسح سجل هذا الهدف؟",
   "Clear all history?": "مسح السجل كله؟",
   "PDF": "PDF",
-  "DOCX": "DOCX"
+  "DOCX": "DOCX",
+  "Expected": "المتوقع",
+  "Header": "الترويسة",
+  "Headers the posture check reads": "الترويسات التي يقرؤها فحص الوضع",
+  "Ports the exposure check connects to (intrusive, confirmed per scan)": "المنافذ التي يتصل بها فحص الانكشاف (اقتحامي، يُؤكَّد في كل فحص)",
+  "Reference": "المرجع",
+  "Database": "قاعدة بيانات",
+  "Plain-text protocol": "بروتوكول نص صريح",
+  "Admin or alternate": "إدارة أو بديل",
+  "Standard service": "خدمة قياسية",
+  "Present on HTTPS, max-age of at least 180 days, includeSubDomains.": "موجود على HTTPS، وmax-age لا يقل عن 180 يومًا، وincludeSubDomains.",
+  "Present, no wildcard origin, no inline or evaluated script.": "موجود، بلا أصل عام، وبلا سكربت مضمّن أو مُقيَّم.",
+  "DENY or SAMEORIGIN, or a CSP frame-ancestors list.": "DENY أو SAMEORIGIN، أو قائمة frame-ancestors في CSP.",
+  "nosniff.": "nosniff.",
+  "A policy that does not send full URLs to other origins.": "سياسة لا ترسل عناوين URL كاملة إلى أصول أخرى.",
+  "Present, turning off features the site does not use.": "موجود، ويعطّل الميزات التي لا يستخدمها الموقع.",
+  "Never * together with credentials.": "لا * أبدًا مع بيانات الاعتماد.",
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ وHttpOnly لملفات الجلسة؛ وSameSite، وNone فقط مع Secure."
 }

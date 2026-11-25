@@ -1194,6 +1194,7 @@ export default function WebSecLabPage() {
         {guideOpen ? (
           <GuideModal
             guides={guides?.guides ?? []}
+            reference={guides?.reference}
             error={guidesError}
             selected={guideId}
             onSelect={setGuideId}

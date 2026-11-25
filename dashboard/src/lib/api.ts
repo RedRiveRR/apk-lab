@@ -832,7 +832,11 @@ export interface WebSecMonitorStatus {
   runner?: { alive: boolean; running: boolean; lastTick: { at: number; error: string; events: number; scanned: number } };
 }
 export interface WebSecGuide { id: string; title: string; checks: string[]; points: string[]; refs: string[] }
-export interface WebSecGuides { guides: WebSecGuide[]; byCheck: Record<string, string> }
+export interface WebSecReference {
+  ports: { port: number; service: string; kind: "database" | "plaintext" | "admin" | "service" }[];
+  headers: { header: string; expect: string }[];
+}
+export interface WebSecGuides { guides: WebSecGuide[]; byCheck: Record<string, string>; reference?: WebSecReference }
 
 export class ApiError extends Error {
   constructor(

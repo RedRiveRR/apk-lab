@@ -3229,5 +3229,22 @@
   "Clear this target's history?": "تاریخچهٔ این هدف پاک شود؟",
   "Clear all history?": "کل تاریخچه پاک شود؟",
   "PDF": "PDF",
-  "DOCX": "DOCX"
+  "DOCX": "DOCX",
+  "Expected": "مورد انتظار",
+  "Header": "سرآیند",
+  "Headers the posture check reads": "سرآیندهایی که بررسی وضعیت می‌خواند",
+  "Ports the exposure check connects to (intrusive, confirmed per scan)": "پورت‌هایی که بررسی افشا به آن‌ها وصل می‌شود (تهاجمی، در هر اسکن تأیید می‌شود)",
+  "Reference": "مرجع",
+  "Database": "پایگاه داده",
+  "Plain-text protocol": "پروتکل متن ساده",
+  "Admin or alternate": "مدیریتی یا جایگزین",
+  "Standard service": "سرویس استاندارد",
+  "Present on HTTPS, max-age of at least 180 days, includeSubDomains.": "روی HTTPS موجود، max-age دست‌کم ۱۸۰ روز، includeSubDomains.",
+  "Present, no wildcard origin, no inline or evaluated script.": "موجود، بدون مبدأ عام، بدون اسکریپت درون‌خطی یا ارزیابی‌شده.",
+  "DENY or SAMEORIGIN, or a CSP frame-ancestors list.": "DENY یا SAMEORIGIN، یا فهرست frame-ancestors در CSP.",
+  "nosniff.": "nosniff.",
+  "A policy that does not send full URLs to other origins.": "سیاستی که نشانی کامل را به مبداهای دیگر نمی‌فرستد.",
+  "Present, turning off features the site does not use.": "موجود، و قابلیت‌هایی را که سایت استفاده نمی‌کند خاموش می‌کند.",
+  "Never * together with credentials.": "هرگز * همراه با اعتبارنامه.",
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ HttpOnly برای کوکی‌های نشست؛ SameSite، و None فقط همراه Secure."
 }

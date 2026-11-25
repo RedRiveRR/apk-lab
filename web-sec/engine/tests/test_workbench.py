@@ -188,3 +188,12 @@ def test_modules_json_lists_preset_membership(storage):
     presets = json.loads(out)["presets"]
     assert presets["quick"] == ["domain_info", "dns_records", "geo_analysis"]
     assert "port_exposure" not in presets["standard"] and "port_exposure" in presets["full"]
+
+
+def test_guides_carry_reference_tables_from_the_checks():
+    from websec.config import DEFAULT_PORTS
+    ref = guides()["reference"]
+    assert [row["port"] for row in ref["ports"]] == list(DEFAULT_PORTS)
+    assert {row["kind"] for row in ref["ports"]} <= {"database", "plaintext", "admin", "service"}
+    assert next(row for row in ref["ports"] if row["port"] == 6379) == {"port": 6379, "service": "Redis", "kind": "database"}
+    assert ref["headers"][0]["header"] == "Strict-Transport-Security"

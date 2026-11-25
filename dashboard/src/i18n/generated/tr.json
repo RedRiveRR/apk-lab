@@ -3229,5 +3229,22 @@
   "Clear this target's history?": "Bu hedefin geçmişi temizlensin mi?",
   "Clear all history?": "Tüm geçmiş temizlensin mi?",
   "PDF": "PDF",
-  "DOCX": "DOCX"
+  "DOCX": "DOCX",
+  "Expected": "Beklenen",
+  "Header": "Başlık",
+  "Headers the posture check reads": "Duruş kontrolünün okuduğu başlıklar",
+  "Ports the exposure check connects to (intrusive, confirmed per scan)": "İfşa kontrolünün bağlandığı bağlantı noktaları (saldırgan, her taramada onaylanır)",
+  "Reference": "Başvuru",
+  "Database": "Veritabanı",
+  "Plain-text protocol": "Düz metin protokolü",
+  "Admin or alternate": "Yönetim veya alternatif",
+  "Standard service": "Standart hizmet",
+  "Present on HTTPS, max-age of at least 180 days, includeSubDomains.": "HTTPS'te mevcut, en az 180 günlük max-age, includeSubDomains.",
+  "Present, no wildcard origin, no inline or evaluated script.": "Mevcut, joker kaynak yok, satır içi veya değerlendirilen betik yok.",
+  "DENY or SAMEORIGIN, or a CSP frame-ancestors list.": "DENY veya SAMEORIGIN ya da bir CSP frame-ancestors listesi.",
+  "nosniff.": "nosniff.",
+  "A policy that does not send full URLs to other origins.": "Diğer kaynaklara tam URL göndermeyen bir politika.",
+  "Present, turning off features the site does not use.": "Mevcut, sitenin kullanmadığı özellikleri kapatır.",
+  "Never * together with credentials.": "Kimlik bilgileriyle birlikte asla *.",
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; oturum çerezleri için HttpOnly; SameSite, None yalnızca Secure ile."
 }

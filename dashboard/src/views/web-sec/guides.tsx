@@ -5,10 +5,52 @@
  */
 import { ArrowSquareOutIcon, BookOpenIcon } from "@phosphor-icons/react";
 import { Modal } from "../../components/ui";
-import type { WebSecGuide } from "../../lib/api";
+import type { WebSecGuide, WebSecReference } from "../../lib/api";
 
-export function GuideModal({ guides, error, selected, onSelect, labels, onClose }: {
+const PORT_KIND: Record<string, string> = {
+  database: "Database", plaintext: "Plain-text protocol", admin: "Admin or alternate", service: "Standard service"
+};
+
+function ReferenceTables({ reference }: { reference: WebSecReference }) {
+  return (
+    <section aria-labelledby="guide-reference" className="space-y-3 border-t border-(--iux-border) pt-3">
+      <h3 id="guide-reference" className="font-semibold">Reference</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <caption className="pb-1 text-start text-(--iux-muted-foreground)">Headers the posture check reads</caption>
+          <thead><tr className="text-(--iux-muted-foreground)"><th className="py-1 pe-3">Header</th><th>Expected</th></tr></thead>
+          <tbody>
+            {reference.headers.map((row) => (
+              <tr key={row.header} className="border-t border-(--iux-border)">
+                <td className="py-1 pe-3 font-mono" translate="no">{row.header}</td>
+                <td>{row.expect}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <caption className="pb-1 text-start text-(--iux-muted-foreground)">Ports the exposure check connects to (intrusive, confirmed per scan)</caption>
+          <thead><tr className="text-(--iux-muted-foreground)"><th className="py-1 pe-3">Port</th><th className="pe-3">Service</th><th>Kind</th></tr></thead>
+          <tbody>
+            {reference.ports.map((row) => (
+              <tr key={row.port} className="border-t border-(--iux-border)">
+                <td className="py-1 pe-3 tabular-nums" dir="ltr">{row.port}</td>
+                <td className="pe-3" translate="no">{row.service || "—"}</td>
+                <td>{PORT_KIND[row.kind] ?? row.kind}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function GuideModal({ guides, reference, error, selected, onSelect, labels, onClose }: {
   guides: WebSecGuide[];
+  reference?: WebSecReference;
   error: string;
   selected: string;
   onSelect: (id: string) => void;
@@ -32,9 +74,15 @@ export function GuideModal({ guides, error, selected, onSelect, labels, onClose 
                 {guide.title}
               </button>
             ))}
+            {reference ? (
+              <button type="button" className="iux-btn" aria-current={selected === "reference" ? "true" : undefined}
+                data-variant={selected === "reference" ? "primary" : "outline"} onClick={() => onSelect("reference")}>
+                Reference
+              </button>
+            ) : null}
           </nav>
         ) : null}
-        {shown.map((guide) => (
+        {selected !== "reference" ? shown.map((guide) => (
           <section key={guide.id} aria-labelledby={`guide-${guide.id}`} className="space-y-2 border-t border-(--iux-border) pt-3">
             <h3 id={`guide-${guide.id}`} className="font-semibold">{guide.title}</h3>
             <ul className="list-disc space-y-1 ps-5">
@@ -57,7 +105,8 @@ export function GuideModal({ guides, error, selected, onSelect, labels, onClose 
               </p>
             ) : null}
           </section>
-        ))}
+        )) : null}
+        {reference && (!selected || selected === "reference") ? <ReferenceTables reference={reference} /> : null}
       </div>
     </Modal>
   );

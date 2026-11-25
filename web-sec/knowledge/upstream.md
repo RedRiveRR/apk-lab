@@ -34,6 +34,7 @@ implementation's internals.
 | `WebAnalyzer/payloads/` (SQLi, XSS, SSTI, LFI, XXE, command injection, SSRF, auth bypass) | payload wordlists are exploitation material; this lab is defensive |
 | `WebQ` `scan_react_rce_command`, `scan_react_rce_full`, `scan_react2shell` | RCE confirmation probes; the defensive half is `react_exposure` |
 | `WebQ` honeypot listener | a decoy service would need its own isolation story; out of scope for this pass |
+| `WebQ` status-code and domain roadmaps (`StatusCodesRoadmap`, `DomainsRoadmap`) | generic HTTP and DNS reference material, better read at MDN and the RFCs the guides link; the port and header roadmaps are folded into the guides' Reference tables, generated from the checks' own tables |
 | `WebQ` React signatures view (`src/lib/data/reactSignatures.ts`, `/react/signatures`) | the honeypot's attack-signature catalogue: injection categories with ready-made exploit `curl` lines. The defensive half is the `react_exposure` panel (development build, `__NEXT_DATA__`, sensitive keys) |
 | WebAnalyzer database, FastAPI dashboard, Docker image | the lab uses os-lab's console and dashboard instead |
 | WebAnalyzer `modules/api_security_scanner.py` ("API Security Scanner", the 17th module wired in `main.py`) and WebQ `scan_api_security` | an active fuzzer that probes guessed API paths with injection payloads; the passive half (exposed files, framework data, headers) is already covered |

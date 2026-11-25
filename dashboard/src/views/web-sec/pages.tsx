@@ -34,12 +34,14 @@ import {
   type WebSecReport,
   type WebSecReportFile,
   type WebSecSeverity,
+  type WebSecStats,
   type WebSecStatus
 } from "../../lib/api";
 import { hasData, ModulePanel } from "./panels";
 import { GuideModal } from "./guides";
 import { ComparePanel, regressed, runLabel } from "./compare";
 import { intervalLabel, MonitorBanner, MonitorPanel } from "./monitor";
+import { HistoryPanel } from "./history";
 
 const SEVERITIES: WebSecSeverity[] = ["critical", "high", "medium", "low", "info"];
 const SEVERITY_CLASS: Record<WebSecSeverity, string> = {
@@ -165,7 +167,7 @@ export default function WebSecLabPage() {
   const [filter, setFilter] = useState<WebSecSeverity | "all">("all");
   const [openModules, setOpenModules] = useState<string[]>([]);
   const [loadedReport, setLoadedReport] = useState<WebSecReport | null>(null);
-  const [historyTarget, setHistoryTarget] = useState("");
+  const [stats, setStats] = useState<WebSecStats | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [bulkTargets, setBulkTargets] = useState<string[]>([]);
@@ -219,8 +221,15 @@ export default function WebSecLabPage() {
     };
   }, []);
 
-  useEffect(() => {
+  const reloadHistory = () => {
     api.websecHistory().then((value) => setHistory(value.entries)).catch(() => undefined);
+    api.websecStats().then(setStats).catch(() => setStats(null));
+    const current = (report?.target || job?.target || target).trim();
+    if (current) api.websecReports(current).then((value) => setReports(value.reports)).catch(() => undefined);
+  };
+
+  useEffect(() => {
+    reloadHistory();
     api.websecGuides().then(setGuides).catch((reason) => setGuidesError(errorText(reason)));
   }, []);
 
@@ -299,7 +308,7 @@ export default function WebSecLabPage() {
         if (value.state !== "running") {
           window.clearInterval(timer);
           setBusy(false);
-          api.websecHistory().then((payload) => !cancelled && setHistory(payload.entries)).catch(() => undefined);
+          if (!cancelled) reloadHistory();
         }
       }).catch((reason) => {
         if (cancelled) return;
@@ -415,11 +424,6 @@ export default function WebSecLabPage() {
   const intrusiveModules = useMemo(
     () => modules.filter((module) => module.active && (!effective || effective.includes(module.id))),
     [modules, effective]);
-
-  const historyTargets = useMemo(() => [...new Set(history.map((entry) => entry.target))], [history]);
-  const timeline = useMemo(
-    () => (historyTarget ? history.filter((entry) => entry.target === historyTarget) : history),
-    [history, historyTarget]);
 
   const moduleLabels = useMemo(() => new Map(modules.map((module) => [module.id, module.label])), [modules]);
   const progress = running ? job?.progress : undefined;
@@ -1101,48 +1105,10 @@ export default function WebSecLabPage() {
           <CareRow
             id="websec-history"
             title="History"
-            summary={history.length ? <><span dir="ltr" className="tabular-nums">{history.length}</span> <span>runs</span></> : <span>none yet</span>}
+            summary={history.length ? <><span dir="ltr" className="tabular-nums">{stats?.runs ?? history.length}</span> <span>runs</span></> : <span>none yet</span>}
           >
-            {history.length ? (
-              <div className="space-y-3">
-                <label className="flex flex-col gap-1 text-sm sm:w-64">
-                  <span className="text-(--iux-muted-foreground)">Target</span>
-                  <select value={historyTarget} onChange={(event) => setHistoryTarget(event.target.value)} className="iux-input">
-                    <option value="">All targets</option>
-                    {historyTargets.map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-                <ol>
-                  {timeline.map((entry, index) => {
-                    const runs = history.filter((item) => item.target === entry.target && item.name);
-                    const position = runs.findIndex((item) => item.name === entry.name);
-                    const comparable = !!entry.name && position >= 0 && position + 1 < runs.length;
-                    return (
-                      <li key={`${entry.target}-${entry.scanned_at}-${index}`} className="relative border-s border-(--iux-border) pb-3 ps-4 last:pb-0">
-                        <span className="absolute -start-[4.5px] top-1.5 size-2 rounded-full bg-[#f36c21]" aria-hidden="true" />
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                          <span className="font-mono text-xs text-(--iux-muted-foreground)">{entry.scanned_at || (entry.name ? runLabel(entry.name) : "")}</span>
-                          {historyTarget ? null : <span>{entry.target}</span>}
-                          <span className={gradeClass(entry.grade)}>{entry.grade} ({entry.score})</span>
-                          <span className="text-xs text-(--iux-muted-foreground)"><span dir="ltr" className="tabular-nums">{entry.summary?.total ?? 0}</span> <span>findings</span></span>
-                          <span className="text-xs text-(--iux-muted-foreground)">{entry.preset}</span>
-                          {entry.name ? (
-                            <button type="button" className="iux-btn" data-variant="ghost" onClick={() => openHistoryEntry(entry)}>Open</button>
-                          ) : null}
-                          {comparable ? (
-                            <button type="button" className="iux-btn" data-variant="ghost" onClick={() => compareHistoryEntry(entry)}>Compare</button>
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-            ) : (
-              <Empty>No scans yet.</Empty>
-            )}
+            <HistoryPanel history={history} stats={stats} gradeClass={gradeClass} onOpen={openHistoryEntry}
+              onCompare={compareHistoryEntry} reload={reloadHistory} />
           </CareRow>
 
           <CareRow

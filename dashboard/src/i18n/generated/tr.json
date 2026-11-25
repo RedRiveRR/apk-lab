@@ -3214,5 +3214,18 @@
   "yes": "evet",
   "no": "hayır",
   "Banner": "Afiş",
-  "Port": "Bağlantı noktası"
+  "Port": "Bağlantı noktası",
+  "Delete selected": "Seçilenleri sil",
+  "Favourite": "Favori",
+  "Favourites only": "Yalnızca favoriler",
+  "Latest grades": "Son notlar",
+  "No favourite runs yet.": "Henüz favori çalıştırma yok.",
+  "The reports are removed from this computer. This cannot be undone.": "Raporlar bu bilgisayardan kaldırılır. Bu işlem geri alınamaz.",
+  "favourites": "favori",
+  "Pick runs of one target": "Tek bir hedefin çalıştırmalarını seçin",
+  "Clear this target's history": "Bu hedefin geçmişini temizle",
+  "Clear all history": "Tüm geçmişi temizle",
+  "Delete the selected runs?": "Seçili çalıştırmalar silinsin mi?",
+  "Clear this target's history?": "Bu hedefin geçmişi temizlensin mi?",
+  "Clear all history?": "Tüm geçmiş temizlensin mi?"
 }

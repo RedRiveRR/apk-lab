@@ -3214,5 +3214,18 @@
   "yes": "بله",
   "no": "خیر",
   "Banner": "بنر",
-  "Port": "پورت"
+  "Port": "پورت",
+  "Delete selected": "حذف موارد انتخاب‌شده",
+  "Favourite": "علاقه‌مندی",
+  "Favourites only": "فقط علاقه‌مندی‌ها",
+  "Latest grades": "آخرین نمره‌ها",
+  "No favourite runs yet.": "هنوز اجرای مورد علاقه‌ای نیست.",
+  "The reports are removed from this computer. This cannot be undone.": "گزارش‌ها از این رایانه حذف می‌شوند. این کار برگشت‌پذیر نیست.",
+  "favourites": "علاقه‌مندی",
+  "Pick runs of one target": "اجراهای یک هدف را انتخاب کنید",
+  "Clear this target's history": "پاک کردن تاریخچهٔ این هدف",
+  "Clear all history": "پاک کردن کل تاریخچه",
+  "Delete the selected runs?": "اجراهای انتخاب‌شده حذف شوند؟",
+  "Clear this target's history?": "تاریخچهٔ این هدف پاک شود؟",
+  "Clear all history?": "کل تاریخچه پاک شود؟"
 }

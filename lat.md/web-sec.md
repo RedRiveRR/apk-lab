@@ -44,7 +44,12 @@ the same document. [[web-sec/engine/websec/grade.py]] turns findings into the
 [[web-sec/knowledge/report-schema.md]] documents every field.
 [[web-sec/engine/websec/history.py#History]] keeps a bounded JSONL summary (each entry
 names its stored report) and the last 20 reports per target under `web-sec/storage`,
-mode 0700/0600.
+mode 0700/0600. Up to 10 runs per target can be favourites (`favourites.json`), which
+pruning keeps; `runs stats|favourite|delete|clear` manages stored runs, and the
+console (`/api/websec/runs/…`), the workbench History row (multi-select delete and
+clear behind the confirmation dialog) and MCP (`websec_stats`, `websec_favourite`,
+`websec_delete_runs` and `websec_clear_history`, the last two with `confirm: true`)
+use it.
 
 ## Console and CLI
 

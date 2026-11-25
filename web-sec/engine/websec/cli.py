@@ -522,6 +522,40 @@ def prefs_command(args) -> int:
     return 0
 
 
+def runs_command(args) -> int:
+    """Manage stored runs: stats | favourite | delete | clear."""
+    history = History()
+    target = (args.target or "").strip().lower()
+    try:
+        if args.action == "stats":
+            payload = history.stats()
+        elif args.action == "favourite":
+            if not target or len(args.name) != 1:
+                raise ValueError("favourite needs --target and one --name")
+            payload = history.set_favourite(target, args.name[0], not args.off)
+        elif args.action == "delete":
+            if not target or not args.name:
+                raise ValueError("delete needs --target and at least one --name")
+            payload = history.delete(target, args.name)
+        else:
+            if not target and not args.all:
+                raise ValueError("clear needs --target, or --all for every target")
+            payload = history.clear(target or None)
+    except (OSError, ValueError) as exc:
+        _error(f"cannot {args.action}: {exc}")
+        return 2
+    if args.json:
+        _print(json.dumps(payload, indent=2, ensure_ascii=False))
+    elif args.action == "stats":
+        _print(f"{payload['targets']} target(s) · {payload['runs']} run(s) · {payload['reports']} report(s), "
+               f"{payload['bytes']} bytes · {payload['favourites']} favourite(s)")
+        for entry in payload["latest"]:
+            _print(f"  {entry['target']:<36} {entry['grade']} ({entry['score']})  {entry['findings']} findings")
+    else:
+        _print(json.dumps(payload))
+    return 0
+
+
 def monitor_command(args) -> int:
     """status | config --save JSON | tick [--force]: the opt-in passive posture monitor."""
     from . import monitor
@@ -702,6 +736,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_prefs.add_argument("--save", default=None, metavar="JSON", help="validate and store a preferences object")
     p_prefs.add_argument("--json", action="store_true")
     p_prefs.set_defaults(func=prefs_command)
+
+    p_runs = sub.add_parser("runs", help="stored runs: stats, favourite, delete, clear")
+    p_runs.add_argument("action", choices=("stats", "favourite", "delete", "clear"))
+    p_runs.add_argument("--target", default="")
+    p_runs.add_argument("--name", action="append", default=[], help="a stored report name (repeat to delete several)")
+    p_runs.add_argument("--off", action="store_true", help="with favourite: remove the mark")
+    p_runs.add_argument("--all", action="store_true", help="with clear: every target")
+    p_runs.add_argument("--json", action="store_true")
+    p_runs.set_defaults(func=runs_command)
 
     p_monitor = sub.add_parser("monitor", help="the opt-in passive monitor: status, config, tick")
     p_monitor.add_argument("action", choices=("status", "config", "tick"))

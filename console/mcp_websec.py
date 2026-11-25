@@ -73,6 +73,10 @@ TOOLS = [
     {"name": "websec_monitor", "description": "The opt-in passive monitor: config (targets, interval, preset, alert threshold, notifications, reminders, scope warning), per-target state, active warnings and recent events. Read-only.", "inputSchema": _obj()},
     {"name": "websec_monitor_config", "description": "Replace the monitor config: enabled, targets (host names in scope, at most 10), intervalMinutes (60, 360, 1440, 10080), preset (quick or standard), alertOn (critical, high, medium, low), notify, reminderHours (0-168), scopeWarnDays (1-60). Monitor scans are always passive.", "inputSchema": _obj({"config": {"type": "object"}}, ["config"])},
     {"name": "websec_monitor_run", "description": "Run one monitor check now over every configured target (passive, scope-checked). Refused while a scan is running.", "inputSchema": _obj()},
+    {"name": "websec_stats", "description": "Totals over every stored run: targets, runs, reports and bytes, favourites, the grade of each target's latest run and its finding counts. Read-only.", "inputSchema": _obj()},
+    {"name": "websec_favourite", "description": "Mark (on: true) or unmark a stored run as a favourite; favourites survive history pruning (at most 10 per target).", "inputSchema": _obj({"target": TARGET, "name": REPORT, "on": {"type": "boolean", "default": True}}, ["target", "name"])},
+    {"name": "websec_delete_runs", "description": "Delete stored runs of one target by report name. Irreversible: requires confirm: true after the user approved the list.", "inputSchema": _obj({"target": TARGET, "names": {"type": "array", "items": REPORT, "minItems": 1, "maxItems": 50}, "confirm": {"type": "boolean"}}, ["target", "names", "confirm"])},
+    {"name": "websec_clear_history", "description": "Delete every stored run of one target, or of all targets with all: true. Irreversible: requires confirm: true after the user approved it.", "inputSchema": _obj({"target": TARGET, "all": {"type": "boolean"}, "confirm": {"type": "boolean"}}, ["confirm"])},
     {"name": "websec_preferences_save", "description": "Save the workbench choices on this computer (kept across restarts and app updates). Takes scan {target, preset, scheme, modules, timeout, deadline} and bulk {preset}; there is no intrusive setting.", "inputSchema": _obj({"preferences": {"type": "object", "properties": {"scan": {"type": "object"}, "bulk": {"type": "object"}}, "additionalProperties": False}}, ["preferences"])},
 ]
 NAMES = {tool["name"] for tool in TOOLS}
@@ -221,6 +225,19 @@ def _dispatch(api, name, args):
     if name == "websec_monitor_run":
         _check(args, [])
         return api.run_monitor()
+    if name == "websec_stats":
+        _check(args, [])
+        return api.run_stats()
+    if name == "websec_favourite":
+        _check(args, ["target", "name", "on"], ["target", "name"])
+        return api.manage_runs("favourite", {"target": args["target"], "name": args["name"], "on": args.get("on", True) is not False})
+    if name in ("websec_delete_runs", "websec_clear_history"):
+        _check(args, ["target", "names", "confirm"] if name == "websec_delete_runs" else ["target", "all", "confirm"])
+        if args.get("confirm") is not True:
+            raise oslab.PlanError(f"{name} deletes stored reports; it needs confirm: true after the user approved it",
+                                  code="CONFIRM_REQUIRED")
+        body = {key: args[key] for key in ("target", "names", "all") if key in args}
+        return api.manage_runs("delete" if name == "websec_delete_runs" else "clear", body)
     if name == "websec_preferences_save":
         _check(args, ["preferences"], ["preferences"])
         return api.save_preferences(args["preferences"])

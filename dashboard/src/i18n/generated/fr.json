@@ -3214,5 +3214,18 @@
   "yes": "oui",
   "no": "non",
   "Banner": "Bannière",
-  "Port": "Port"
+  "Port": "Port",
+  "Delete selected": "Supprimer la sélection",
+  "Favourite": "Favori",
+  "Favourites only": "Favoris seulement",
+  "Latest grades": "Dernières notes",
+  "No favourite runs yet.": "Aucune exécution favorite pour l’instant.",
+  "The reports are removed from this computer. This cannot be undone.": "Les rapports sont supprimés de cet ordinateur. Cette action est irréversible.",
+  "favourites": "favoris",
+  "Pick runs of one target": "Choisissez les exécutions d’une seule cible",
+  "Clear this target's history": "Effacer l’historique de cette cible",
+  "Clear all history": "Effacer tout l’historique",
+  "Delete the selected runs?": "Supprimer les exécutions sélectionnées ?",
+  "Clear this target's history?": "Effacer l’historique de cette cible ?",
+  "Clear all history?": "Effacer tout l’historique ?"
 }

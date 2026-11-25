@@ -79,6 +79,8 @@ async function mockStatus(page: Page, value: WebSecStatus, saved: WebSecPreferen
   await page.route("**/api/websec/reports*", (route) => route.fulfill({ json: { reports: [] } }));
   await page.route("**/api/websec/guides", (route) => route.fulfill({ json: guides }));
   await page.route("**/api/websec/monitor", (route) => route.fulfill({ json: monitorOff }));
+  await page.route("**/api/websec/runs/stats", (route) => route.fulfill({ json: {
+    targets: 0, runs: 0, reports: 0, bytes: 0, favourites: 0, grades: {}, latestFindings: {}, latest: [] } }));
   await page.route("**/api/websec/preferences", (route) => {
     if (route.request().method() === "POST") {
       const body = route.request().postDataJSON() as WebSecPreferences;
@@ -608,4 +610,49 @@ test("content, takeover and origin checks get dedicated panels", async ({ page }
   const origin = page.getByRole("region", { name: "Origin exposure details" });
   await expect(origin.getByText("Cloudflare")).toBeVisible();
   await expect(origin.getByRole("cell", { name: "yes" })).toBeVisible();
+});
+
+test("history marks favourites, deletes selected runs after confirming, and clears", async ({ page }) => {
+  await mockStatus(page, status);
+  const entries = [
+    { target: "example.test", scanned_at: "2026-11-24T00:00:00+00:00", grade: "A", score: 95, summary: { total: 1 }, preset: "standard", active: false, refused: false, name: "20261124T000000Z-95.json", favourite: false },
+    { target: "example.test", scanned_at: "2026-11-01T00:00:00+00:00", grade: "B", score: 80, summary: { total: 2 }, preset: "standard", active: false, refused: false, name: "20261101T000000Z-80.json", favourite: true }
+  ];
+  await page.route("**/api/websec/history*", (route) => route.fulfill({ json: { entries } }));
+  await page.route("**/api/websec/runs/stats", (route) => route.fulfill({ json: {
+    targets: 1, runs: 2, reports: 2, bytes: 4096, favourites: 1, grades: { A: 1 }, latestFindings: {}, latest: [] } }));
+  const calls: { path: string; body: unknown }[] = [];
+  await page.route(/\/api\/websec\/runs\/(favourite|delete|clear)$/, (route) => {
+    calls.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    return route.fulfill({ status: 202, json: { deleted: 1, favourite: true } });
+  });
+
+  await page.goto("/web-sec/");
+  await openRow(page, "History");
+  const row = page.locator("#websec-history");
+  await expect(row.getByText("4.0 KB")).toBeVisible();
+  await row.getByLabel("Favourites only").check();
+  await expect(row.getByText("2026-11-24T00:00:00+00:00")).toHaveCount(0);
+  await row.getByLabel("Favourites only").uncheck();
+
+  await row.getByRole("button", { name: "Favourite" }).first().click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toEqual({ path: "/api/websec/runs/favourite", body: { target: "example.test", name: "20261124T000000Z-95.json", on: true } });
+
+  await expect(row.getByRole("button", { name: "Delete selected" })).toBeDisabled();
+  await row.getByLabel("Select 20261124T000000Z-95.json").check();
+  await row.getByRole("button", { name: "Delete selected" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("20261124T000000Z-95.json")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  expect(calls).toHaveLength(1); // cancelling deletes nothing
+  await row.getByRole("button", { name: "Delete selected" }).click();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect.poll(() => calls.length).toBe(2);
+  expect(calls[1]).toEqual({ path: "/api/websec/runs/delete", body: { target: "example.test", names: ["20261124T000000Z-95.json"] } });
+
+  await row.getByRole("button", { name: "Clear all history" }).click();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect.poll(() => calls.length).toBe(3);
+  expect(calls[2]).toEqual({ path: "/api/websec/runs/clear", body: { all: true } });
 });

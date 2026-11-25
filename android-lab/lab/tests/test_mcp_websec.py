@@ -16,7 +16,8 @@ import websec_api  # noqa: E402
 EXPECTED = {"websec_status", "websec_catalogue", "websec_guides", "websec_preferences", "websec_history",
             "websec_reports", "websec_report", "websec_compare", "websec_job", "websec_review", "websec_scan",
             "websec_scan_cancel", "websec_bulk", "websec_preferences_save", "websec_monitor",
-            "websec_monitor_config", "websec_monitor_run"}
+            "websec_monitor_config", "websec_monitor_run", "websec_stats", "websec_favourite",
+            "websec_delete_runs", "websec_clear_history"}
 
 
 def rpc(name, args=None, key="arguments"):
@@ -144,3 +145,22 @@ def test_monitor_tools_configure_and_run_through_the_engine(lab, monkeypatch):
         "returncode": 0, "stdout": json.dumps({"newEvents": [], "scanned": ["localhost"]}), "stderr": ""})())
     failed, ran = rpc("websec_monitor_run")
     assert not failed and ran["queued"] is False and ran["lastTick"]["scanned"] == 1
+
+
+def test_run_management_needs_confirmation_to_delete(lab, tmp_path):
+    folder = tmp_path / "storage" / "reports" / "localhost"
+    folder.mkdir(parents=True)
+    (folder / "20261124T000000Z-96.json").write_text(json.dumps({"target": "localhost", "findings": []}), encoding="utf-8")
+    failed, stats = rpc("websec_stats")
+    assert not failed and "runs" in stats
+    failed, marked = rpc("websec_favourite", {"target": "localhost", "name": "20261124T000000Z-96.json"})
+    assert not failed and marked["favourite"] is True
+    for name, args in (("websec_delete_runs", {"target": "localhost", "names": ["20261124T000000Z-96.json"]}),
+                       ("websec_clear_history", {"all": True, "confirm": False})):
+        failed, refusal = rpc(name, args)
+        assert failed and refusal["code"] in ("CONFIRM_REQUIRED", "INVALID_ARGS")
+    assert (folder / "20261124T000000Z-96.json").exists()
+    failed, done = rpc("websec_delete_runs", {"target": "localhost", "names": ["20261124T000000Z-96.json"], "confirm": True})
+    assert not failed and done["deleted"] == 1
+    failed, refusal = rpc("websec_clear_history", {"confirm": True})
+    assert failed and refusal["code"] == "WEBSEC_400"

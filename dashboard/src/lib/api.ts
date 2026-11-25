@@ -784,7 +784,12 @@ export interface WebSecJob {
 export interface WebSecHistoryEntry {
   target: string; scanned_at: string; score: number; grade: string;
   summary: Record<string, number>; preset: string; active: boolean; refused: boolean;
-  name?: string;
+  name?: string; favourite?: boolean;
+}
+export interface WebSecStats {
+  targets: number; runs: number; reports: number; bytes: number; favourites: number;
+  grades: Record<string, number>; latestFindings: Record<string, number>;
+  latest: { target: string; grade: string; score: number; scanned_at: string; name?: string; findings: number }[];
 }
 export interface WebSecReportFile { name: string; bytes: number; modified: number }
 export interface WebSecBulkTarget {
@@ -1084,6 +1089,10 @@ export const api = {
   websecCompare: (target: string, oldName: string, newName: string) =>
     call<WebSecCompare>(`/api/websec/compare?target=${encodeURIComponent(target)}&old=${encodeURIComponent(oldName)}&new=${encodeURIComponent(newName)}`),
   websecGuides: () => call<WebSecGuides>("/api/websec/guides"),
+  websecStats: () => call<WebSecStats>("/api/websec/runs/stats"),
+  websecFavourite: (target: string, name: string, on: boolean) => post<{ favourite: boolean }>("/api/websec/runs/favourite", { target, name, on }),
+  websecDeleteRuns: (target: string, names: string[]) => post<{ deleted: number }>("/api/websec/runs/delete", { target, names }),
+  websecClearRuns: (scope: { target: string } | { all: true }) => post<{ deleted: number }>("/api/websec/runs/clear", scope),
   websecMonitor: () => call<WebSecMonitorStatus>("/api/websec/monitor"),
   websecMonitorConfig: (config: WebSecMonitorConfig) => post<WebSecMonitorStatus>("/api/websec/monitor/config", { config }),
   websecMonitorRun: () => post<{ queued: boolean }>("/api/websec/monitor/run", {}),

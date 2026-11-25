@@ -569,6 +569,44 @@ class WebSecAPI:
     def guides(self) -> dict:
         return self._engine(["guides", "--json"])
 
+    # ── stored-run management ────────────────────────────────────────────────
+
+    def run_stats(self) -> dict:
+        return self._engine(["runs", "stats", "--json"])
+
+    def manage_runs(self, action: str, payload: dict) -> dict:
+        """favourite | delete | clear stored runs; names and targets are validated here and in the engine."""
+        allowed = {"favourite": {"target", "name", "on"}, "delete": {"target", "names"}, "clear": {"target", "all"}}[action]
+        if not isinstance(payload, dict) or set(payload) - allowed:
+            raise WebSecError(400, "Unknown field(s): " + ", ".join(sorted(set(payload or {}) - allowed)))
+        target = payload.get("target")
+        if target is not None and (not isinstance(target, str) or not TARGET.match(target)):
+            raise WebSecError(400, "Invalid target")
+        args = ["runs", action, "--json"]
+        if target:
+            args += ["--target", target]
+        if action == "favourite":
+            name = payload.get("name")
+            if not isinstance(name, str) or not REPORT_NAME.match(name):
+                raise WebSecError(400, "Invalid report name")
+            args += ["--name", name] + ([] if payload.get("on", True) else ["--off"])
+        elif action == "delete":
+            names = payload.get("names")
+            if not isinstance(names, list) or not names or len(names) > 50 or \
+                    any(not isinstance(name, str) or not REPORT_NAME.match(name) for name in names):
+                raise WebSecError(400, "names must be a list of 1 to 50 stored report names")
+            for name in names:
+                args += ["--name", name]
+        else:
+            if not target and payload.get("all") is not True:
+                raise WebSecError(400, "name a target, or send all: true to clear every target")
+            if not target:
+                args.append("--all")
+        with self.lock:
+            if self.monitor_running:
+                raise WebSecError(409, "The monitor is scanning; try again in a minute")
+        return self._engine(args)
+
     # ── monitor ──────────────────────────────────────────────────────────────
 
     def start_monitor(self) -> None:
@@ -615,6 +653,8 @@ class WebSecAPI:
             return self.guides()
         if path == "/api/websec/monitor":
             return self.monitor_status()
+        if path == "/api/websec/runs/stats":
+            return self.run_stats()
         if path == "/api/websec/compare":
             first = lambda key: (query.get(key) or [""])[0]  # noqa: E731
             return self.compare(first("target"), first("old"), first("new"))
@@ -659,6 +699,8 @@ class WebSecAPI:
             return self.save_monitor(data)
         if path == "/api/websec/monitor/run":
             return self.run_monitor()
+        if path in ("/api/websec/runs/favourite", "/api/websec/runs/delete", "/api/websec/runs/clear"):
+            return self.manage_runs(path.rsplit("/", 1)[-1], data)
         raise WebSecError(404, f"Unknown Web Sec Lab route: {path}")
 
     def delete(self, path: str) -> dict:

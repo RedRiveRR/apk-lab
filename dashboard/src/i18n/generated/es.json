@@ -3214,5 +3214,18 @@
   "yes": "sí",
   "no": "no",
   "Banner": "Banner",
-  "Port": "Puerto"
+  "Port": "Puerto",
+  "Delete selected": "Eliminar la selección",
+  "Favourite": "Favorito",
+  "Favourites only": "Solo favoritos",
+  "Latest grades": "Últimas calificaciones",
+  "No favourite runs yet.": "Aún no hay ejecuciones favoritas.",
+  "The reports are removed from this computer. This cannot be undone.": "Los informes se eliminan de este equipo. No se puede deshacer.",
+  "favourites": "favoritos",
+  "Pick runs of one target": "Elija ejecuciones de un solo objetivo",
+  "Clear this target's history": "Borrar el historial de este objetivo",
+  "Clear all history": "Borrar todo el historial",
+  "Delete the selected runs?": "¿Eliminar las ejecuciones seleccionadas?",
+  "Clear this target's history?": "¿Borrar el historial de este objetivo?",
+  "Clear all history?": "¿Borrar todo el historial?"
 }

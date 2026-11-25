@@ -30,6 +30,8 @@ cp console/scope.example.json scope.json     # then list the hosts you own
 ./labctl websec scan example.test --fail-on high --baseline A.json --summary "$GITHUB_STEP_SUMMARY"
 ./labctl websec prefs --json                                       # the workbench's saved choices
 ./labctl websec guides                                             # the SecOps guides
+./labctl websec runs stats                                         # totals and each target's latest grade
+./labctl websec monitor status                                     # the opt-in passive monitor
 ```
 
 `./labctl websec` is `python3 web-sec/run.py`. The same commands work directly

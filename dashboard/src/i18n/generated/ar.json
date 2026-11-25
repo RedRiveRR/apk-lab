@@ -3214,5 +3214,18 @@
   "yes": "نعم",
   "no": "لا",
   "Banner": "اللافتة",
-  "Port": "المنفذ"
+  "Port": "المنفذ",
+  "Delete selected": "احذف المحدد",
+  "Favourite": "مفضّل",
+  "Favourites only": "المفضلة فقط",
+  "Latest grades": "أحدث الدرجات",
+  "No favourite runs yet.": "لا تشغيلات مفضلة بعد.",
+  "The reports are removed from this computer. This cannot be undone.": "تُحذف التقارير من هذا الحاسوب. لا يمكن التراجع عن ذلك.",
+  "favourites": "مفضلة",
+  "Pick runs of one target": "اختر تشغيلات هدف واحد",
+  "Clear this target's history": "امسح سجل هذا الهدف",
+  "Clear all history": "امسح السجل كله",
+  "Delete the selected runs?": "حذف التشغيلات المحددة؟",
+  "Clear this target's history?": "مسح سجل هذا الهدف؟",
+  "Clear all history?": "مسح السجل كله؟"
 }

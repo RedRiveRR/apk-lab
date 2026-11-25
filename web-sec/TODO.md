@@ -125,8 +125,8 @@ For locations, the state of the branch and the continuation checklist, read
    `content_scan` (secrets and DOM-XSS candidates), `subdomain_takeover`,
    `origin_exposure` and `react_exposure`.
 2. PDF and DOCX export (or document printing the HTML report).
-3. History management: favourite, delete a run, delete several, clear all, global
-   statistics.
+3. ~~History management~~ — done: favourites (kept through pruning), delete one or
+   several, clear a target or everything, statistics; CLI `runs`, console, MCP, UI.
 4. Reference pages (ports, headers, status codes, domains): fold into the guides or
    record the exclusion.
 5. ~~React signatures view~~ — excluded: it is the honeypot's exploit-signature

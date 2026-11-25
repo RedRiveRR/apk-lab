@@ -18,7 +18,7 @@
 # Stages:
 #   1. unit suites                          [required; all that --quick runs]
 #      android (pytest) + PENT-07 golden suite, source-lab engine (pytest),
-#      cleanup-lab reference and engine (unittest), cleanup-lab qrust-scan
+#      web-sec engine (pytest), cleanup-lab reference and engine (unittest), cleanup-lab qrust-scan
 #      (cargo test; skipped without cargo), OS-30 linux-lab hardening mocks (unittest)
 #   2. android sample analysis pipeline     [smoke, non-fatal]
 #   3. shell script syntax check (bash -n)  [required; --changed checks changed scripts only]
@@ -27,6 +27,7 @@
 #
 # --changed picks stages from paths (scripts/lib/changed-files.sh, shared with scripts/e2e.sh):
 #   android-lab/** -> android pytest + PENT-07   source-lab/** -> source-lab pytest
+#   web-sec/** -> web-sec engine pytest
 #   cleanup-lab/** -> cleanup unittest; cargo test only for cleanup-lab/reference/qrust-scan/**
 #   linux-lab/** -> OS-30 mocks   *.sh -> bash -n on those files   dashboard/** -> stage 5
 #   lat.md/** or a changed file with an @lat comment -> lat check
@@ -72,8 +73,8 @@ bad()  { printf '%s[fail]%s %s\n'   "$RED"    "$RESET" "$*"; FAIL=$((FAIL+1)); }
 skip() { printf '%s[skip]%s %s\n'   "$YELLOW" "$RESET" "$*"; SKIP=$((SKIP+1)); }
 
 # --- Which stages run -----------------------------------------------------------
-ALL_STAGES="android pent07 source cleanup_ref cleanup_engine qrust linux session_scribe sample shell lat dashboard"
-QUICK_STAGES="android pent07 source cleanup_ref cleanup_engine qrust linux session_scribe"
+ALL_STAGES="android pent07 source websec cleanup_ref cleanup_engine qrust linux session_scribe sample shell lat dashboard"
+QUICK_STAGES="android pent07 source websec cleanup_ref cleanup_engine qrust linux session_scribe"
 STAGES=""
 CHANGED_FILES=""
 SHELL_FILES=""
@@ -94,6 +95,7 @@ else
       android-lab/lab/scripts/*) add android pent07 sample ;;
       android-lab/*) add android pent07 ;;
       source-lab/*) add source ;;
+      web-sec/*) add websec ;;
       cleanup-lab/reference/qrust-scan/*) add qrust ;;
       cleanup-lab/reference/python/*) add cleanup_ref ;;
       cleanup-lab/engine/*) add cleanup_engine ;;
@@ -122,10 +124,11 @@ pick_label() { case "$1" in ALL|"") echo "whole suite" ;; NONE) echo "none" ;; *
 if command -v python3 >/dev/null 2>&1 && [ "$MODE" = changed ]; then
   want android && PICK_ANDROID="$(py_pick android-lab/lab)"
   want source && PICK_SOURCE="$(py_pick source-lab/engine)"
+  want websec && PICK_WEBSEC="$(py_pick web-sec/engine)"
   want cleanup_ref && PICK_CLEANUP_REF="$(py_pick cleanup-lab/reference/python)"
   want cleanup_engine && PICK_CLEANUP_ENGINE="$(py_pick cleanup-lab/engine)"
 fi
-PICK_ANDROID="${PICK_ANDROID:-ALL}"; PICK_SOURCE="${PICK_SOURCE:-ALL}"
+PICK_ANDROID="${PICK_ANDROID:-ALL}"; PICK_SOURCE="${PICK_SOURCE:-ALL}"; PICK_WEBSEC="${PICK_WEBSEC:-ALL}"
 PICK_CLEANUP_REF="${PICK_CLEANUP_REF:-ALL}"; PICK_CLEANUP_ENGINE="${PICK_CLEANUP_ENGINE:-ALL}"
 
 if [ "$MODE" = changed ] || [ "$DRY" = 1 ]; then
@@ -133,6 +136,7 @@ if [ "$MODE" = changed ] || [ "$DRY" = 1 ]; then
   printf '%sstages:%s%s\n' "$BOLD" "$RESET" "${STAGES:- none}"
   want android && echo "  android tests: $(pick_label "$PICK_ANDROID")"
   want source && echo "  source-lab tests: $(pick_label "$PICK_SOURCE")"
+  want websec && echo "  web-sec tests: $(pick_label "$PICK_WEBSEC")"
   want cleanup_ref && echo "  cleanup reference tests: $(pick_label "$PICK_CLEANUP_REF")"
   want cleanup_engine && echo "  cleanup engine tests: $(pick_label "$PICK_CLEANUP_ENGINE")"
   if [ "$MODE" = changed ] && want shell; then echo "  shell scripts: $(printf '%s\n' "$SHELL_FILES" | sed '/^$/d' | wc -l | tr -d ' ') changed"; fi
@@ -257,6 +261,18 @@ if want source; then
   hdr "Source Lab engine tests (pytest)"
   if ensure_pytest; then
     pytest_suite "$ROOT/source-lab/engine" "$PICK_SOURCE" "source-lab/engine test suite"
+  else
+    bad "could not prepare a Python environment with pytest"
+  fi
+  stage_end
+fi
+
+# Web Sec Lab runs in its own process too: the engine package is named websec.
+if want websec; then
+  stage_start websec
+  hdr "Web Sec Lab engine tests (pytest)"
+  if ensure_pytest; then
+    pytest_suite "$ROOT/web-sec/engine" "$PICK_WEBSEC" "web-sec/engine test suite"
   else
     bad "could not prepare a Python environment with pytest"
   fi

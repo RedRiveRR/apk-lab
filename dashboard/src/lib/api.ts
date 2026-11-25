@@ -8,7 +8,7 @@
 import { useEffect, useReducer } from "react";
 import type { CapabilityCatalog } from "../health/capabilities";
 
-export type LabId = "android" | "windows" | "winapps" | "linux" | "ios" | "macos" | "source" | "web";
+export type LabId = "android" | "windows" | "winapps" | "linux" | "ios" | "macos" | "source" | "websec" | "web";
 export type LabState = "ready" | "needs-setup" | "unavailable";
 
 export interface HostTool {
@@ -750,6 +750,105 @@ export interface WebOverview {
   eventCount: number; lastEventSeq: number;
 }
 
+// Web Sec Lab (console/websec_api.py → web-sec/engine)
+export type WebSecState = "ready" | "needs-setup" | "unavailable";
+export type WebSecSeverity = "critical" | "high" | "medium" | "low" | "info";
+export interface WebSecRequirement {
+  id: string; label: string; found: boolean; required: boolean; hint: string;
+}
+export interface WebSecStatus {
+  state: WebSecState; provider: string | null; requirements: WebSecRequirement[];
+  reasons: string[]; notes: string[]; version: string; python: string; storage: string;
+}
+export interface WebSecModule {
+  id: string; label: string; description: string; group: string;
+  weight: string; active: boolean; upstream: string;
+}
+export interface WebSecFinding {
+  module: string; severity: WebSecSeverity; title: string; detail: string;
+  evidence: string; remediation: string; refs: string[];
+  kind?: string; cwe?: string; cwe_name?: string; owasp?: string;
+}
+export interface WebSecModuleOutcome {
+  id: string; label: string; status: string; duration_ms: number;
+  findings: number; error: string; note: string; data?: Record<string, unknown>;
+}
+export interface WebSecReport {
+  target: string; url: string; started_at: string; duration_seconds: number;
+  preset: string; active: boolean; score: number; grade: string;
+  summary: Record<WebSecSeverity | "total", number>;
+  refused: boolean; refusal: string;
+  modules: WebSecModuleOutcome[]; findings: WebSecFinding[];
+}
+export interface WebSecJob {
+  id: string; state: "running" | "done" | "error" | "cancelled";
+  target: string; preset: string; active: boolean; started: number;
+  report?: WebSecReport; error?: string;
+  progress?: { modules: { id: string; status: string | null }[] };
+}
+export interface WebSecHistoryEntry {
+  target: string; scanned_at: string; score: number; grade: string;
+  summary: Record<string, number>; preset: string; active: boolean; refused: boolean;
+  name?: string; favourite?: boolean;
+}
+export interface WebSecStats {
+  targets: number; runs: number; reports: number; bytes: number; favourites: number;
+  grades: Record<string, number>; latestFindings: Record<string, number>;
+  latest: { target: string; grade: string; score: number; scanned_at: string; name?: string; findings: number }[];
+}
+export interface WebSecReportFile { name: string; bytes: number; modified: number }
+export interface WebSecBulkTarget {
+  target: string; score?: number; grade?: string;
+  summary?: Record<string, number>; error: string;
+}
+export interface WebSecBulkJob {
+  id: string; state: "running" | "done" | "error" | "cancelled";
+  kind?: "scan" | "bulk"; target: string; preset: string; active: boolean; started: number;
+  results?: { targets: WebSecBulkTarget[]; count: number }; error?: string;
+}
+
+export interface WebSecPreferences {
+  scan: { target: string; preset: string; scheme: "http" | "https"; modules: string[]; timeout: number | null; deadline: number | null };
+  bulk: { preset: string };
+}
+export interface WebSecPreferencesPayload { preferences: WebSecPreferences; configError: string | null; version: number }
+export interface WebSecDiffFinding { module: string; severity: WebSecSeverity; title: string }
+export interface WebSecCompare {
+  target: string;
+  score: { current: number; previous: number; delta: number };
+  grade: { current: string; previous: string };
+  summary: Record<WebSecSeverity | "total", { current: number; previous: number }>;
+  new: WebSecDiffFinding[]; resolved: WebSecDiffFinding[];
+  modules: { id: string; previous: string | null; current: string | null }[];
+  from: { name: string; started_at?: string; preset?: string };
+  to: { name: string; started_at?: string; preset?: string };
+}
+export interface WebSecMonitorConfig {
+  enabled: boolean; targets: string[]; intervalMinutes: number; preset: "quick" | "standard";
+  alertOn: "critical" | "high" | "medium" | "low"; notify: boolean; reminderHours: number; scopeWarnDays: number;
+}
+export interface WebSecMonitorWarning { target: string; level: "warning" | "critical"; since: number; message: string; flagged: string[] }
+export interface WebSecMonitorEvent { at: number; kind: string; target: string; message: string }
+export interface WebSecMonitorTarget { lastRun?: number; status?: string; error?: string; grade?: string; score?: number; lastReport?: string }
+export interface WebSecMonitorStatus {
+  config: WebSecMonitorConfig; configError: string | null;
+  targets: Record<string, WebSecMonitorTarget>; activeWarnings: WebSecMonitorWarning[];
+  events: WebSecMonitorEvent[]; intervals: number[];
+  runner?: { alive: boolean; running: boolean; lastTick: { at: number; error: string; events: number; scanned: number } };
+}
+export interface WebSecPlan {
+  target: string; url: string; preset: string; scheme: string; active: boolean;
+  scope: { allowed: boolean; reason: string; rule: string };
+  checks: { id: string; label: string; active: boolean; weight: string; runs: boolean; note: string }[];
+  intrusive: string[]; available_intrusive: string[]; runs: number;
+}
+export interface WebSecGuide { id: string; title: string; checks: string[]; points: string[]; refs: string[] }
+export interface WebSecReference {
+  ports: { port: number; service: string; kind: "database" | "plaintext" | "admin" | "service" }[];
+  headers: { header: string; expect: string }[];
+}
+export interface WebSecGuides { guides: WebSecGuide[]; byCheck: Record<string, string>; reference?: WebSecReference }
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -986,6 +1085,36 @@ export const api = {
   webEvents: (since: number) => call<{ events: WebEvent[]; lastSeq: number; count: number }>(`/api/web/events?since=${since}`),
   webAddInjection: (name: string, code: string) => post<{ ok: boolean; injection: WebInjection }>("/api/web/injections", { name, code }),
   webDeleteInjection: (id: string) => call<{ ok: boolean; removed: boolean }>(`/api/web/injections/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-OSLab": "1" } }),
+  websecStatus: () => call<WebSecStatus>("/api/websec/status"),
+  websecModules: () => call<{ modules: WebSecModule[]; presets?: Record<string, string[]> }>("/api/websec/modules"),
+  websecStart: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean; cveLookup?: boolean; timeout?: number; deadline?: number }) =>
+    post<WebSecJob>("/api/websec/scans", request),
+  websecJob: (id: string) => call<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecCancel: (id: string) => del<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecBulkStart: (request: { targets: string[]; preset?: string }) =>
+    post<WebSecBulkJob>("/api/websec/bulk", request),
+  websecBulkJob: (id: string) => call<WebSecBulkJob>(`/api/websec/bulk/${encodeURIComponent(id)}`),
+  websecHistory: (target?: string) =>
+    call<{ entries: WebSecHistoryEntry[] }>(`/api/websec/history?limit=20${target ? `&target=${encodeURIComponent(target)}` : ""}`),
+  websecReports: (target: string) =>
+    call<{ reports: WebSecReportFile[] }>(`/api/websec/reports?target=${encodeURIComponent(target)}`),
+  websecPreferences: () => call<WebSecPreferencesPayload>("/api/websec/preferences"),
+  websecSavePreferences: (preferences: WebSecPreferences) =>
+    post<WebSecPreferencesPayload>("/api/websec/preferences", preferences),
+  websecCompare: (target: string, oldName: string, newName: string) =>
+    call<WebSecCompare>(`/api/websec/compare?target=${encodeURIComponent(target)}&old=${encodeURIComponent(oldName)}&new=${encodeURIComponent(newName)}`),
+  websecGuides: () => call<WebSecGuides>("/api/websec/guides"),
+  websecPlan: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean }) =>
+    post<WebSecPlan>("/api/websec/plan", request),
+  websecStats: () => call<WebSecStats>("/api/websec/runs/stats"),
+  websecFavourite: (target: string, name: string, on: boolean) => post<{ favourite: boolean }>("/api/websec/runs/favourite", { target, name, on }),
+  websecDeleteRuns: (target: string, names: string[]) => post<{ deleted: number }>("/api/websec/runs/delete", { target, names }),
+  websecClearRuns: (scope: { target: string } | { all: true }) => post<{ deleted: number }>("/api/websec/runs/clear", scope),
+  websecMonitor: () => call<WebSecMonitorStatus>("/api/websec/monitor"),
+  websecMonitorConfig: (config: WebSecMonitorConfig) => post<WebSecMonitorStatus>("/api/websec/monitor/config", { config }),
+  websecMonitorRun: () => post<{ queued: boolean }>("/api/websec/monitor/run", {}),
+  websecReport: (target: string, name: string, format: string) =>
+    call<{ content: string; format: string; name: string; encoding?: "base64" }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
   upload: async (file: File) => {
     const form = new FormData();
     form.append("apk", file);

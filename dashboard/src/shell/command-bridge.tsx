@@ -44,6 +44,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "how-to-use": "how-to-use",
   firewall: "firewall",
   "web-lab": "web-lab",
+  "web-sec": "web-sec",
   "labs/android": "lab-android",
   "labs/windows": "lab-windows",
   "labs/winapps": "lab-winapps",
@@ -52,6 +53,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "labs/macos": "lab-macos",
   "labs/source": "lab-source",
   "labs/web": "lab-web",
+  "labs/websec": "lab-websec",
 };
 
 /**

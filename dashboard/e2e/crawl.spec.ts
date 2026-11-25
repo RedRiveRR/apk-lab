@@ -11,7 +11,7 @@ const MAIN_ROUTES = [
   "/", "/health/", "/jobs/", "/content/", "/contribute/", "/feedback/", "/how-to-use/",
   "/android/", "/android/console/", "/cleanup/", "/cleanup/scan/", "/cleanup/settings/",
   "/firewall/", "/source/", "/source/analyzer/", "/web-lab/",
-  "/labs/ios/", "/labs/macos/", "/labs/windows/", "/labs/winapps/", "/labs/linux/", "/legal/privacy/"
+  "/labs/ios/", "/labs/macos/", "/labs/windows/", "/labs/winapps/", "/labs/linux/", "/labs/websec/", "/legal/privacy/"
 ];
 const LOCALES = ["en", "ar", "de", "es", "fa", "fr", "it", "tr"];
 const WIDTHS: Record<string, { width: number; height: number }> = {

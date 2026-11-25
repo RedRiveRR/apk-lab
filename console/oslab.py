@@ -40,13 +40,15 @@ import uuid
 
 # ── Static lab model ─────────────────────────────────────────────────────────
 
-LAB_ORDER = ["android", "windows", "winapps", "linux", "ios", "macos", "source", "web"]
+LAB_ORDER = ["android", "windows", "winapps", "linux", "ios", "macos", "source", "websec", "web"]
 
 LABS = {
     "source": {"label": "Source Lab", "dir": "source-lab", "labctl": "source", "containers": [],
                "summary": "Local source and package analysis across five platforms."},
     "web": {"label": "Web Lab", "dir": "web-lab", "labctl": "web", "containers": [],
             "summary": "Embedded in-app browser with JavaScript injection for webview security work."},
+    "websec": {"label": "Web Sec Lab", "dir": "web-sec", "labctl": "websec", "containers": [],
+               "summary": "Scope-guarded web posture assessment across DNS, TLS, headers and exposure."},
     "android": {
         "label": "Android Lab",
         "dir": "android-lab/lab",
@@ -2078,7 +2080,7 @@ def _req(id_: str, label: str, found: bool, required: bool = True, hint: str = "
 
 
 def provider_for(lab: str, os_name: str) -> str | None:
-    if lab == "source":
+    if lab in ("source", "websec"):
         return "native-python" if os_name in ("linux", "macos", "windows") else None
     if lab == "web":
         return "native-rust" if os_name in ("linux", "macos", "windows") else None
@@ -2104,6 +2106,9 @@ def lab_status(lab: str, host: dict) -> dict:
     if lab == "source":
         import source_control
         return source_control.lab_status(host["root"], host["os"])
+    if lab == "websec":
+        import websec_control
+        return websec_control.lab_status(host["root"], host["os"])
     if lab == "web":
         return web_lab_status(host)
     meta = LABS[lab]
@@ -2475,6 +2480,9 @@ def plan(root: str, request: dict, host: dict | None = None) -> dict:
     if request.get("lab") == "source":
         import source_control
         return source_control.plan(root, request)
+    if request.get("lab") == "websec":
+        import websec_control
+        return websec_control.plan(root, request)
     allowed = {"lab", "action", "profile", "cpus", "ram", "disk", "device", "wslDistro", "backup",
                "clickPid", "clickX", "clickY", "target", "glob",
                "inputKind", "inputText", "inputKey",

@@ -45,6 +45,7 @@ See [Windows signing](app/SIGNING.md).
 | [**Source Lab**](source-lab/) | Portable Python source/package analysis, signed evidence, structural maps and local dashboard workflows; native/live verification remains open as bonus contributions |
 | [**Firewall**](firewall-lab/) | Student-built company network and firewall designs, rendered at [`/firewall/`](https://keyvanarasteh.github.io/os-lab/firewall/) |
 | [**Web**](web-lab/) | Embedded in-app browser (Rust/wry) with JavaScript injection — before page scripts and on demand — and a captured page-activity event log |
+| [**Web Sec**](web-sec/) | Scope-guarded web posture assessment: DNS, TLS, headers, cookies and exposure with JSON/SARIF/Markdown reports; standard library only |
 
 ## Quick start
 

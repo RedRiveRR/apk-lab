@@ -35,6 +35,7 @@
 
     { "paths": ["src/views/source/**", "src/views/source-bonus-tasks.tsx", "src/pages/source/**", "src/lib/source-*.ts"], "specs": ["source.spec.ts"], "routes": ["/source/", "/source/analyzer/", "/source/brain/", "/source/pipeline/"] },
     { "paths": ["src/views/web-lab/**", "src/pages/web-lab/**"], "specs": ["web-lab.spec.ts"], "routes": ["/web-lab/"] },
+    { "paths": ["src/views/web-sec/**", "src/pages/web-sec/**"], "specs": ["web-sec.spec.ts"], "routes": ["/web-sec/"] },
     { "paths": ["src/views/winapps-app-mirror.tsx"], "specs": ["winapps.spec.ts"], "routes": ["/labs/winapps/"] },
     { "paths": ["src/views/how-to-use-page.tsx", "src/lib/how-to-use.ts", "src/pages/how-to-use.astro"], "specs": ["how-to-use.spec.ts"], "routes": ["/how-to-use/"] },
     { "paths": ["src/views/feedback-page.tsx", "src/pages/feedback.astro"], "specs": ["how-to-use.spec.ts", "health-and-content.spec.ts"], "routes": ["/feedback/"] },

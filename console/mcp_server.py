@@ -32,6 +32,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import oslab  # noqa: E402
 import mcp_cleanup  # noqa: E402
+import mcp_websec  # noqa: E402
 import winapps  # noqa: E402
 import winapps_guard  # noqa: E402
 
@@ -264,6 +265,7 @@ TOOLS = [
 
 
 TOOLS += mcp_cleanup.TOOLS  # CUX-10: the Cleanup Lab tools share this server and its error shape
+TOOLS += mcp_websec.TOOLS  # the Web Sec Lab workbench, on the same console API and scope guard
 
 
 def _window_point(window_id: int, args: dict) -> tuple[int, int, dict]:
@@ -362,6 +364,8 @@ def tool_call(name: str, args: dict) -> dict:
         return win_tool_call(name, args)
     if name in mcp_cleanup.NAMES:
         return mcp_cleanup.call(name, args, REPO_ROOT)
+    if name in mcp_websec.NAMES:
+        return mcp_websec.call(name, args, REPO_ROOT)
     if name == "macos_apps":
         return {"content": [{"type": "text", "text": json.dumps(oslab.macos_windows())}]}
     if name == "macos_get_app_state":
@@ -434,6 +438,8 @@ def run_task(args: dict) -> dict:
                 raise oslab.PlanError("macos_task cannot nest", code="INVALID_ARGS")
             if str(tool) in mcp_cleanup.NAMES:
                 raise oslab.PlanError("cleanup tools are not available inside macos_task", code="INVALID_ARGS")
+            if str(tool) in mcp_websec.NAMES:
+                raise oslab.PlanError("web sec tools are not available inside macos_task", code="INVALID_ARGS")
             result = tool_call(str(tool), step_args if isinstance(step_args, dict) else {})
             row["ok"] = True
             row["result"] = result["content"][0]["text"][:2000]
@@ -467,11 +473,12 @@ def handle(message: dict) -> dict | None:
         try:
             # MCP clients send the tool arguments as `arguments`; `args` is kept for older callers.
             raw_args = params["arguments"] if "arguments" in params else params.get("args")
-            # The Windows tools validate their arguments themselves, so a falsey non-object such as
-            # [] or 0 is refused instead of silently becoming {}; only a missing value means none.
-            args = {} if raw_args is None else raw_args
-            if not str(params.get("name")).startswith("winapps_"):
-                args = raw_args or {}
+            if str(params.get("name")).startswith("winapps_"):
+                # The Windows tools validate their arguments themselves, so a falsey non-object such
+                # as [] or 0 is refused instead of silently becoming {}; only a missing value means none.
+                args = {} if raw_args is None else raw_args
+            else:
+                args = raw_args if isinstance(raw_args, dict) else {}
             result = tool_call(str(params.get("name")), args)
             return {"jsonrpc": "2.0", "id": message_id, "result": {**result, "isError": False}}
         except (oslab.PlanError, winapps_guard.GuardError, winapps.WinAppError) as e:

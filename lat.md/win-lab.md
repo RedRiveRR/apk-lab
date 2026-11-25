@@ -108,8 +108,10 @@ unrestricted windows there. It guards against agent mistakes, not a hostile loca
 user; a secret the agent does not hold on that address is a later phase.
 
 The audit trail is per process: the HTTP console and each MCP server keep their own
-in-memory rows and `seq` numbers, all appending to the same daily file, and the file
-keeps a coalesced row's first count only. `GET /api/labs/winapps/policy` includes the
+in-memory rows and `seq` numbers, all appending to the same daily file. Coalescing matches
+any identical row of the last minute, the final count of a coalesced row reaches the file as
+one `{"seq", "kind": "count"}` line, and a console restarted on the same day continues
+that day's `seq`. `GET /api/labs/winapps/policy` includes the
 policy file's path on purpose, so people know where to edit it.
 
 ## Research

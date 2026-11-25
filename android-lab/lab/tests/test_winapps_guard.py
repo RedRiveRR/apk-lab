@@ -524,3 +524,42 @@ def test_screenshot_passes_the_window_token_through(world, monkeypatch):
     monkeypatch.setattr(winapps, "winapps_window_screenshot", lambda hwnd, token=None: seen.append((hwnd, token)) or PNG)
     assert guard.screenshot(world["root"], 1, "human", expected_token="t" * 24) == PNG
     assert seen == [(1, "t" * 24)]
+
+
+# ── audit accuracy (review findings on #299) ─────────────────────────────────
+
+def _lines(folder):
+    return [json.loads(line) for line in next(folder.glob("winapps-audit-*.jsonl")).read_text().splitlines()]
+
+
+def test_interleaved_duplicates_still_coalesce(audit_dir, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(guard.time, "time", lambda: clock[0])
+    for _ in range(3):
+        guard.audit(None, "refused", audience="human", window_id=7, code="RESTRICTED_WINDOW")
+        guard.audit(None, "list", audience="agent")
+        clock[0] += 1
+    kinds = [row["kind"] for row in rows()]
+    assert kinds == ["refused", "list"]
+    assert [row["count"] for row in rows()] == [3, 3]
+
+
+def test_the_final_coalesced_count_reaches_the_file(audit_dir, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(guard.time, "time", lambda: clock[0])
+    for _ in range(4):
+        guard.audit(None, "refused", audience="human", window_id=7, code="RESTRICTED_WINDOW")
+        clock[0] += 5
+    clock[0] += 120  # the window closes; the next event flushes the count
+    guard.audit(None, "list", audience="agent")
+    lines = _lines(audit_dir)
+    assert lines[0]["kind"] == "refused" and lines[0]["count"] == 1
+    assert {"seq": lines[0]["seq"], "kind": "count", "count": 4} in lines
+
+
+def test_a_restart_on_the_same_day_continues_the_sequence(audit_dir):
+    guard.audit(None, "list", audience="agent")
+    guard.audit(None, "doctor", audience="agent")
+    guard._reset_audit()  # a new console process
+    guard.audit(None, "screenshot", audience="agent", window_id=1)
+    assert [line["seq"] for line in _lines(audit_dir)] == [1, 2, 3]

@@ -163,15 +163,68 @@ _AUDIT_LOCK = threading.Lock()
 _AUDIT_FILE_MAX_ROWS = 10_000  # per process and day: a flood of distinct rows must not fill the disk
 _AUDIT_FILE_ROWS = 0
 _AUDIT_PERSISTENT = True
+_AUDIT_DAY = ""          # the day whose file `_AUDIT_SEQ` was resumed from
+_AUDIT_PENDING: dict = {}  # seq -> row whose coalesced count is not yet in the file
 
 
 def _reset_audit() -> None:
-    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
+    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT, _AUDIT_DAY
     with _AUDIT_LOCK:
         _AUDIT.clear()
+        _AUDIT_PENDING.clear()
         _AUDIT_SEQ = 0
         _AUDIT_FILE_ROWS = 0
         _AUDIT_PERSISTENT = True
+        _AUDIT_DAY = ""
+
+
+def _last_seq(path: str) -> int:
+    """The highest `seq` in an existing daily file (its tail), so a restart does not reuse numbers."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 65536))
+            tail = f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return 0
+    best = 0
+    for line in tail:
+        try:
+            value = json.loads(line).get("seq")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(value, int) and not isinstance(value, bool):
+            best = max(best, value)
+    return best
+
+
+def _write_line(folder: str | None, payload: dict) -> None:
+    """Append one JSONL line to today's file; the cap or a failure only flips `persistent`.
+    Call with the lock held, so lines reach the file in seq order."""
+    global _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
+    if not folder:
+        return
+    if _AUDIT_FILE_ROWS >= _AUDIT_FILE_MAX_ROWS:
+        _AUDIT_PERSISTENT = False
+        return
+    try:
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
+                  "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+        _AUDIT_FILE_ROWS += 1
+    except OSError:
+        _AUDIT_PERSISTENT = False
+
+
+def _flush_counts(folder: str | None, now: float, force: bool = False) -> None:
+    """Persist the final count of coalesced rows whose window closed (or all of them, `force`).
+    One compact `{"seq", "count"}` line per coalesced row, so the file reports repeated activity."""
+    for seq, row in list(_AUDIT_PENDING.items()):
+        if force or now - row["time"] > _COALESCE_SECONDS:
+            del _AUDIT_PENDING[seq]
+            if row["count"] > 1:
+                _write_line(folder, {"seq": seq, "kind": "count", "count": row["count"]})
 
 
 def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
@@ -179,39 +232,35 @@ def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
     """Record one row. Never raises: auditing must not break the action it describes.
 
     Titles and pixels cannot be passed in. An identical row (same audience, kind, app, window and
-    code) within 60 seconds of the previous one only raises its count, so a panel retrying a
-    restricted window every few seconds writes one row a minute.
+    code) within 60 seconds of an earlier one only raises that row's count, even when other events
+    came in between, so a panel retrying a restricted window every few seconds writes one row a
+    minute; the final count reaches the file as one `{"seq", "kind": "count"}` line.
     """
-    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
+    global _AUDIT_SEQ, _AUDIT_DAY
     try:
         now = time.time()
+        folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
         with _AUDIT_LOCK:
-            last = _AUDIT[-1] if _AUDIT else None
-            if (last and now - last["time"] <= _COALESCE_SECONDS and last["audience"] == audience
-                    and last["kind"] == kind and last["app"] == app and last["windowId"] == window_id
-                    and last["code"] == code):
-                last["count"] += 1
-                return
+            _flush_counts(folder, now)
+            for row in reversed(_AUDIT):
+                if now - row["time"] > _COALESCE_SECONDS:
+                    break
+                if (row["audience"] == audience and row["kind"] == kind and row["app"] == app
+                        and row["windowId"] == window_id and row["code"] == code):
+                    row["count"] += 1
+                    _AUDIT_PENDING[row["seq"]] = row
+                    return
+            day = time.strftime("%Y%m%d")
+            if folder and day != _AUDIT_DAY:
+                # A console restarted on the same day continues that day's numbering.
+                _AUDIT_SEQ = max(_AUDIT_SEQ, _last_seq(os.path.join(folder, "winapps-audit-%s.jsonl" % day)))
+                _AUDIT_DAY = day
             _AUDIT_SEQ += 1
             row = {"seq": _AUDIT_SEQ, "time": now, "audience": audience, "kind": kind, "app": app,
                    "windowId": window_id, "code": code, "tool": tool, "count": 1}
             _AUDIT.append(row)
             del _AUDIT[:-_AUDIT_MAX]
-            folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
-            if folder:
-                # Under the lock so rows reach the file in seq order; a failure or the cap only
-                # flips `persistent`, the in-memory trail keeps working.
-                if _AUDIT_FILE_ROWS >= _AUDIT_FILE_MAX_ROWS:
-                    _AUDIT_PERSISTENT = False
-                else:
-                    try:
-                        os.makedirs(folder, exist_ok=True)
-                        with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
-                                  "a", encoding="utf-8") as f:
-                            f.write(json.dumps(row) + "\n")
-                        _AUDIT_FILE_ROWS += 1
-                    except OSError:
-                        _AUDIT_PERSISTENT = False
+            _write_line(folder, row)
     except Exception:  # noqa: BLE001 - the audit trail is best effort by design
         pass
 

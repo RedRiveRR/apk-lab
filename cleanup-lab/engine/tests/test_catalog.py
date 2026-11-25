@@ -104,12 +104,13 @@ class LoadTest(unittest.TestCase):
     def test_repository_catalog_loads(self):
         entries = catalog.load(ROOT, BASE_ENV)
         ids = [entry["id"] for entry in entries]
-        self.assertEqual(ids[:2], ["browser.chrome.cache", "browser.chrome.history"])
-        self.assertEqual(ids[-11], "simulators.coresimulator-devices")
-        self.assertEqual(ids[-10:], ['system.user-caches', 'system.user-logs', 'system.trash', 'system.temp', 'system.local-temp', 'system.shared-temp', 'system.crash-reports', 'system.font-caches', 'system.shared-font-caches', 'system.spotlight-index'])
-        self.assertEqual(len(ids), 70)
-        self.assertEqual({entry["family"] for entry in entries}, {"browser", "developers", "system", "simulators"})
-        self.assertEqual({entry["file"] for entry in entries}, {"browser.json", "developers.json", "system.json", "simulators.json"})
+        self.assertEqual(ids[:5], ["agents.gemini", "agents.codex", "agents.claude", "agents.opencode", "agents.zcode"])
+        self.assertEqual(ids[10:12], ["browser.chrome.cache", "browser.chrome.history"])
+        self.assertEqual(ids[-12], "simulators.coresimulator-devices")
+        self.assertEqual(ids[-11:], ['system.user-caches', 'system.user-logs', 'system.trash', 'system.temp', 'system.local-temp', 'system.shared-temp', 'system.crash-reports-system', 'system.crash-reports', 'system.font-caches', 'system.shared-font-caches', 'system.spotlight-index'])
+        self.assertEqual(len(ids), 92)
+        self.assertEqual({entry["family"] for entry in entries}, {"agents", "browser", "developers", "system", "simulators"})
+        self.assertEqual({entry["file"] for entry in entries}, {"agents.json", "browser.json", "developers.json", "system.json", "simulators.json"})
 
     def test_for_platform_filters_without_dropping_the_entry(self):
         with tempfile.TemporaryDirectory() as base:
@@ -212,6 +213,108 @@ class SchemaTest(unittest.TestCase):
                     self.assertIn(entry["risk"], risks)
                     self.assertIn(entry["category"], categories)
                     self.assertLessEqual(set(entry["paths"]), platforms)
+
+
+class P1P2EntriesTest(unittest.TestCase):
+    """CLN p1/p2: entries for what a real disk review found missing (see .temp/todo.p1-p2.md)."""
+
+    NEW = {
+        "developers.uv", "developers.vscode-extensions", "developers.vscode-insiders-extensions",
+        "developers.vscode-user-data", "developers.vscode-insiders-user-data", "developers.codex-runtimes",
+        "developers.rembg-models", "developers.oslab-cache", "developers.gopath", "developers.cargo-home",
+        "developers.homebrew-cellar", "agents.gemini", "agents.codex", "agents.claude", "agents.opencode",
+        "agents.zcode", "system.crash-reports-system",
+    }
+    MEASURED_ONLY = {
+        "developers.gopath", "developers.cargo-home", "developers.homebrew-cellar", "developers.oslab-cache",
+        "developers.vscode-user-data", "developers.vscode-insiders-user-data",
+        "agents.gemini", "agents.codex", "agents.claude", "agents.opencode", "agents.zcode",
+    }
+
+    def setUp(self):
+        self.entries = {entry["id"]: entry for entry in catalog.load(ROOT, BASE_ENV)}
+
+    def test_entries_exist_and_are_never_preselected(self):
+        self.assertTrue(self.NEW <= set(self.entries))
+        for entry_id in self.NEW:
+            self.assertFalse(self.entries[entry_id]["defaultSelected"], entry_id)
+
+    def test_agent_and_toolchain_data_is_measured_only(self):
+        for entry_id in self.MEASURED_ONLY:
+            self.assertIs(self.entries[entry_id].get("cleanable"), False, entry_id)
+
+    def test_agent_entries_are_credentials_risk(self):
+        for entry_id in self.NEW:
+            if entry_id.startswith("agents."):
+                self.assertEqual(self.entries[entry_id]["risk"], "credentials", entry_id)
+
+    def test_system_crash_reports_needs_privilege(self):
+        self.assertTrue(self.entries["system.crash-reports-system"]["needsPrivilege"])
+
+    def test_uv_uses_env_probe_and_lock_guard(self):
+        uv = self.entries["developers.uv"]
+        self.assertEqual(uv["cacheEnv"], ["UV_CACHE_DIR"])
+        self.assertEqual(uv["probeArgv"], ["uv", "cache", "dir"])
+        self.assertEqual(uv["owningProcesses"], ["uv"])
+
+
+class AgentHomeChildrenTest(unittest.TestCase):
+    """CLNA: parents stay report-only, narrow children are cleanable, credentials never are."""
+
+    PARENTS = ("agents.gemini", "agents.codex", "agents.claude", "agents.opencode", "agents.zcode")
+    BULK = ("agents.codex-bulk", "agents.zcode-bulk", "agents.gemini-bulk")
+    HISTORY = ("agents.codex-history", "agents.codex-databases")
+
+    def setUp(self):
+        self.entries = {entry["id"]: entry for entry in catalog.load(ROOT, BASE_ENV)}
+
+    def test_codex_runtimes_is_cleanable_medium_risk(self):
+        entry = self.entries["developers.codex-runtimes"]
+        self.assertIs(entry["cleanable"], True)
+        self.assertEqual(entry["risk"], "medium")
+        self.assertFalse(entry["defaultSelected"])
+
+    def test_children_are_cleanable_never_preselected_and_guarded_by_process(self):
+        for entry_id in self.BULK + self.HISTORY:
+            entry = self.entries[entry_id]
+            self.assertIs(entry["cleanable"], True, entry_id)
+            self.assertFalse(entry["defaultSelected"], entry_id)
+            self.assertTrue(entry["owningProcesses"], entry_id)
+        for entry_id in self.BULK:
+            self.assertEqual(self.entries[entry_id]["risk"], "medium", entry_id)
+        for entry_id in self.HISTORY:
+            self.assertEqual(self.entries[entry_id]["risk"], "privacy", entry_id)
+
+    def test_no_cleanable_path_reaches_a_credential_or_an_agent_home_root(self):
+        for entry in self.entries.values():
+            if not entry["cleanable"]:
+                continue
+            for templates in entry["paths"].values():
+                for template in templates:
+                    self.assertIsNone(catalog.credential_reason(template), (entry["id"], template))
+
+    def test_credential_names_and_agent_roots_are_refused(self):
+        for bad in ("~/.codex/auth.json", "~/.codex/config.toml", "~/.codex", "~/.gemini/oauth_creds.json",
+                    "%USERPROFILE%\\.zcode", "~/.claude/settings.local.json", "~/.codex/memories_1.sqlite",
+                    "~/app/.env"):
+            self.assertIsNotNone(catalog.credential_reason(bad), bad)
+        for good in ("~/.codex/packages", "~/.zcode/worktrees", "~/.cache/codex-runtimes"):
+            self.assertIsNone(catalog.credential_reason(good), good)
+
+    def test_a_cleanable_entry_on_a_credential_file_fails_validation(self):
+        document = {"version": 1, "family": "system", "entries": [demo(
+            paths={"macos": ["~/.codex/auth.json"]}, cleanable=True)]}
+        with tempfile.TemporaryDirectory() as root:
+            folder = os.path.join(root, "cleanup-lab", "catalog")
+            os.makedirs(folder)
+            with open(os.path.join(folder, "demo.json"), "w") as handle:
+                json.dump(document, handle)
+            with self.assertRaisesRegex(catalog.CatalogError, "refused"):
+                catalog.load(root, BASE_ENV)
+
+    def test_a_credential_entry_may_stay_report_only(self):
+        for entry_id in self.PARENTS:
+            self.assertIs(self.entries[entry_id]["cleanable"], False, entry_id)
 
 
 if __name__ == "__main__":

@@ -244,13 +244,15 @@ AGENT_MAX_PIXELS = 3840 * 2160  # an agent capture is base64'd into one JSON lin
 _CAPTURE_TIMEOUT = 15.0
 
 
-def _capture(hwnd: int) -> bytes:
+def _capture(hwnd: int, expected_token: str | None = None) -> bytes:
     """The raw capture with a deadline: a window that stops responding must not block the caller."""
     box: dict = {}
 
     def run() -> None:
         try:
-            box["png"] = winapps.winapps_window_screenshot(hwnd)
+            # The token (master's identity check) is passed only when the caller has one.
+            box["png"] = (winapps.winapps_window_screenshot(hwnd) if expected_token is None
+                          else winapps.winapps_window_screenshot(hwnd, expected_token))
         except BaseException as error:  # noqa: BLE001 - re-raised on the caller's thread
             box["error"] = error
 
@@ -258,7 +260,7 @@ def _capture(hwnd: int) -> bytes:
     worker.start()
     worker.join(_CAPTURE_TIMEOUT)
     if worker.is_alive():
-        raise winapps.WinAppError("That window did not respond in time; try again later", "CAPTURE_TIMEOUT")
+        raise winapps.WinAppError("That window did not respond in time; try again later", status=504, code="CAPTURE_TIMEOUT")
     if "error" in box:
         raise box["error"]
     return box["png"]
@@ -334,8 +336,31 @@ def list_windows(root: str, audience: str, *, tool: str | None = None) -> dict:
     return reply
 
 
+def require_window(root: str, window_id: object, audience: str, *, tool: str | None = None) -> dict | None:
+    """The current window if `audience` may read or act on it, else a refusal (audited).
+
+    The single check in front of every window-specific route that is not a plain capture: UI
+    Automation reads, search, the live stream and guarded input. Restricted windows are refused
+    for everyone; agents also need the app on the allowlist. On a host without the native mirror
+    there is nothing to check, and the mirror itself reports that it is unavailable.
+    """
+    _audience(audience)
+    if winapps.sys.platform != "win32":
+        return None
+    try:
+        hwnd = _window_id(window_id)
+    except GuardError as error:
+        raise _refuse(root, audience, tool, None, None, error.code, str(error)) from None
+    window = winapps.window_info(hwnd)
+    if window is None:
+        raise _refuse(root, audience, tool, None, hwnd, "WINDOW_GONE",
+                      "That window is not on screen anymore; refresh the mirror", "retry")
+    _check(root, audience, tool, window, hwnd, load_policy(root))
+    return window
+
+
 def screenshot(root: str, window_id: object, audience: str, *, tool: str | None = None,
-               _audit_success: bool = True) -> bytes:
+               _audit_success: bool = True, expected_token: str | None = None) -> bytes:
     """A PNG of one window, only if it passes the policy before and after the capture."""
     _audience(audience)
     if winapps.sys.platform != "win32":
@@ -354,7 +379,7 @@ def screenshot(root: str, window_id: object, audience: str, *, tool: str | None 
         raise _refuse(root, audience, tool, window, hwnd, "CAPTURE_TOO_LARGE",
                       "That window is too large for an agent capture")
     try:
-        png = _capture(hwnd)
+        png = _capture(hwnd, expected_token)
     except winapps.WinAppError as error:
         retry = "never" if error.code == "INVALID_WINDOW" else "retry"
         raise _refuse(root, audience, tool, window, hwnd, error.code, str(error), retry) from None
@@ -384,7 +409,7 @@ def doctor(root: str, audience: str = "agent", *, tool: str | None = None) -> di
         try:
             return screenshot(root, hwnd, audience, tool=tool, _audit_success=False)
         except GuardError as error:
-            raise winapps.WinAppError(str(error), error.code) from None
+            raise winapps.WinAppError(str(error), status=getattr(error, "status", 400), code=error.code) from None
 
     result = winapps.doctor(can_probe=can_probe, capture=capture)
     if audience == "agent":

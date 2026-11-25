@@ -300,7 +300,7 @@ def test_gone_window_and_capture_failures_map_to_codes(world, monkeypatch):
     assert gone.value.code == "WINDOW_GONE" and gone.value.retry == "retry"
 
     def failing(hwnd):
-        raise winapps.WinAppError("Could not capture that window", "CAPTURE_FAILED")
+        raise winapps.WinAppError("Could not capture that window", code="CAPTURE_FAILED")
 
     monkeypatch.setattr(winapps, "winapps_window_screenshot", failing)
     with pytest.raises(guard.GuardError) as failed:
@@ -488,3 +488,39 @@ def test_agents_get_a_smaller_capture_ceiling_than_people(world):
         guard.screenshot(world["root"], 1, "agent")
     assert refused.value.code == "CAPTURE_TOO_LARGE"
     assert guard.screenshot(world["root"], 1, "human") == PNG
+
+
+# ── require_window: the gate in front of UIA, search, stream and input (merged with #316/#318) ──
+
+def test_require_window_refuses_restricted_windows_for_everyone(world):
+    for audience in ("human", "agent"):
+        with pytest.raises(guard.GuardError) as refused:
+            guard.require_window(world["root"], 3, audience)
+        assert refused.value.code == "RESTRICTED_WINDOW"
+    assert guard.require_window(world["root"], 2, "human")["windowId"] == 2
+    with pytest.raises(guard.GuardError) as refused:
+        guard.require_window(world["root"], 2, "agent")
+    assert refused.value.code == "APP_NOT_ALLOWED"
+    assert world["captures"] == []  # a check never captures
+
+
+def test_require_window_rejects_bad_and_gone_ids(world):
+    for bad in ("x", True, 0, 2 ** 40, None):
+        with pytest.raises(guard.GuardError) as refused:
+            guard.require_window(world["root"], bad, "human")
+        assert refused.value.code == "INVALID_WINDOW"
+    with pytest.raises(guard.GuardError) as gone:
+        guard.require_window(world["root"], 999, "human")
+    assert gone.value.code == "WINDOW_GONE" and gone.value.retry == "retry"
+
+
+def test_require_window_is_a_no_op_off_windows(world, monkeypatch):
+    monkeypatch.setattr(winapps.sys, "platform", "darwin")
+    assert guard.require_window(world["root"], 3, "human") is None
+
+
+def test_screenshot_passes_the_window_token_through(world, monkeypatch):
+    seen = []
+    monkeypatch.setattr(winapps, "winapps_window_screenshot", lambda hwnd, token=None: seen.append((hwnd, token)) or PNG)
+    assert guard.screenshot(world["root"], 1, "human", expected_token="t" * 24) == PNG
+    assert seen == [(1, "t" * 24)]

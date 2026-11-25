@@ -91,7 +91,7 @@ def test_guard_and_collector_errors_become_is_error_with_code(on_windows, monkey
 
     monkeypatch.setattr(winapps_guard, "list_windows", broken)
     failed = call("winapps_apps")
-    assert failed["isError"] is True and payload(failed) == {"error": "enumeration failed", "code": "CAPTURE_FAILED"}
+    assert failed["isError"] is True and payload(failed) == {"error": "enumeration failed", "code": "WINAPP_ERROR"}
 
 
 def test_winapps_capabilities_reports_policy_summary_and_input_unsupported(on_windows, monkeypatch, tmp_path):

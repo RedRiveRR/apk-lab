@@ -369,10 +369,121 @@ def history_command(args) -> int:
     return 0
 
 
+def plan_command(args) -> int:
+    """What a scan would do, without touching the network: the review step for agents.
+
+    Normalizes the target, asks the scope guard, and lists every selected check
+    with whether it would run, so an operator (or an MCP client) can show the
+    plan before any packet leaves. Intrusive checks are listed separately; they
+    only run with ``--active``.
+    """
+    try:
+        options = Options.build(args.target, preset=args.preset, modules=args.modules,
+                                active=args.active, scheme=args.scheme, scope_path=args.scope)
+        _load_catalogue()
+        from .registry import select
+        specs = select(options.modules or None, options.preset)
+    except ValueError as exc:
+        _error(f"invalid plan: {exc}")
+        return 2
+    try:
+        decision = Guard(options.scope_path).check("host", options.target)
+    except Exception as exc:  # no manifest, unreadable manifest: a refusal, never a crash
+        decision = {"allowed": False, "reason": str(exc) or "no usable scope is declared", "rule": ""}
+    checks = []
+    for spec in specs:
+        runs = bool(decision.get("allowed")) and (options.active or not spec.active)
+        note = ""
+        if not decision.get("allowed"):
+            note = "the target is outside the declared scope"
+        elif spec.active and not options.active:
+            note = "intrusive; runs only with an active, confirmed scan"
+        checks.append({"id": spec.id, "label": spec.label, "active": spec.active,
+                       "weight": spec.weight, "runs": runs, "note": note})
+    payload = {
+        "target": options.target, "url": options.url, "preset": options.preset,
+        "scheme": options.scheme, "active": options.active,
+        "scope": {"allowed": bool(decision.get("allowed")), "reason": str(decision.get("reason") or ""),
+                  "rule": str(decision.get("rule") or "")},
+        "checks": checks,
+        "intrusive": [entry["id"] for entry in checks if entry["active"] and entry["runs"]],
+        "available_intrusive": [entry["id"] for entry in checks if entry["active"]],
+        "runs": sum(1 for entry in checks if entry["runs"]),
+    }
+    if args.json:
+        _print(json.dumps(payload, indent=2))
+    else:
+        verdict = "allowed" if payload["scope"]["allowed"] else f"refused: {payload['scope']['reason']}"
+        _print(f"{payload['url']} · {options.preset} · scope {verdict}")
+        for entry in checks:
+            _print(f"  {'run ' if entry['runs'] else 'skip'} {entry['id']:<22} {entry['note']}")
+    return 0 if payload["scope"]["allowed"] else 1
+
+
+def compare_command(args) -> int:
+    """Diff two stored reports of one target (older first), as ``scan --diff`` does."""
+    history = History()
+    try:
+        before = history.load(args.target, args.old)
+        after = history.load(args.target, args.new)
+    except (OSError, ValueError) as exc:
+        _error(f"cannot read the reports: {exc}")
+        return 2
+    for document in (before, after):
+        if str(document.get("target") or "") != args.target.strip().lower():
+            _error("both reports must belong to the requested target")
+            return 2
+    diff = diff_reports(after, before)
+    diff["from"] = {"name": args.old, "started_at": before.get("started_at"), "preset": before.get("preset")}
+    diff["to"] = {"name": args.new, "started_at": after.get("started_at"), "preset": after.get("preset")}
+    _print(json.dumps(diff, indent=2, ensure_ascii=False) if args.json else _render_diff(diff))
+    return 0
+
+
+def prefs_command(args) -> int:
+    from . import preferences
+    if args.save is None:
+        payload = preferences.load()
+    else:
+        try:
+            payload = preferences.save(json.loads(args.save))
+        except ValueError as exc:  # PreferencesError and invalid JSON
+            _error(f"invalid preferences: {exc}")
+            return 2
+        except OSError as exc:
+            _error(f"cannot save the preferences: {exc}")
+            return 1
+    if args.json:
+        _print(json.dumps(payload, indent=2))
+    else:
+        scan_prefs = payload["preferences"]["scan"]
+        _print(f"target {scan_prefs['target'] or '-'} · {scan_prefs['preset']} · {scan_prefs['scheme']} · "
+               f"{len(scan_prefs['modules']) or 'preset'} checks")
+        if payload.get("configError"):
+            _print(f"note: {payload['configError']}")
+    return 0
+
+
+def guides_command(args) -> int:
+    from .guides import guides
+    payload = guides()
+    if args.json:
+        _print(json.dumps(payload, indent=2))
+        return 0
+    for guide in payload["guides"]:
+        _print(f"## {guide['title']}")
+        for point in guide["points"]:
+            _print(f"- {point}")
+        _print("")
+    return 0
+
+
 def modules(args) -> int:
     entries = _load_catalogue()
     if args.json:
-        _print(json.dumps({"modules": entries, "plugins": plugin_report()}, indent=2))
+        from .registry import select
+        presets = {name: [spec.id for spec in select(None, name)] for name in ("quick", "standard", "full")}
+        _print(json.dumps({"modules": entries, "presets": presets, "plugins": plugin_report()}, indent=2))
         return 0
     for entry in entries:
         flag = "active" if entry["active"] else entry["group"]
@@ -456,6 +567,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_history.add_argument("--limit", type=int, default=20)
     p_history.add_argument("--json", action="store_true")
     p_history.set_defaults(func=history_command)
+
+    p_plan = sub.add_parser("plan", help="what a scan would run, without touching the network")
+    p_plan.add_argument("target")
+    p_plan.add_argument("--preset", default="standard", choices=("quick", "standard", "full"))
+    p_plan.add_argument("--modules", default="", help="comma-separated module ids")
+    p_plan.add_argument("--active", action="store_true", help="plan the intrusive checks too")
+    p_plan.add_argument("--scheme", default="https", choices=("http", "https"))
+    p_plan.add_argument("--scope", default="", help="scope manifest path")
+    p_plan.add_argument("--json", action="store_true")
+    p_plan.set_defaults(func=plan_command)
+
+    p_compare = sub.add_parser("compare", help="what changed between two stored reports of one target")
+    p_compare.add_argument("--target", required=True)
+    p_compare.add_argument("--old", required=True, help="the earlier report name")
+    p_compare.add_argument("--new", required=True, help="the later report name")
+    p_compare.add_argument("--json", action="store_true")
+    p_compare.set_defaults(func=compare_command)
+
+    p_prefs = sub.add_parser("prefs", help="read or save the workbench choices")
+    p_prefs.add_argument("--save", default=None, metavar="JSON", help="validate and store a preferences object")
+    p_prefs.add_argument("--json", action="store_true")
+    p_prefs.set_defaults(func=prefs_command)
+
+    p_guides = sub.add_parser("guides", help="the SecOps guides behind each check")
+    p_guides.add_argument("--json", action="store_true")
+    p_guides.set_defaults(func=guides_command)
 
     p_modules = sub.add_parser("modules", help="the registered check catalogue")
     p_modules.add_argument("--json", action="store_true")

@@ -114,7 +114,8 @@ def _brief(view):
             "summary": report.get("summary"), "refused": report.get("refused"), "refusal": report.get("refusal"),
             "modules": [{"id": m.get("id"), "status": m.get("status"), "findings": m.get("findings")}
                         for m in report.get("modules") or []],
-            "findings": [{key: f.get(key) for key in ("severity", "module", "title", "remediation")}
+            "findings": [{key: f.get(key) for key in ("severity", "module", "title", "remediation", "cwe", "owasp")
+                          if f.get(key) is not None}
                          for f in findings[:TOP_FINDINGS]],
             "omittedFindings": max(0, len(findings) - TOP_FINDINGS),
         }

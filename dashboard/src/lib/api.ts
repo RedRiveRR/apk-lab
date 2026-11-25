@@ -762,6 +762,7 @@ export interface WebSecModule {
 export interface WebSecFinding {
   module: string; severity: WebSecSeverity; title: string; detail: string;
   evidence: string; remediation: string; refs: string[];
+  kind?: string; cwe?: string; cwe_name?: string; owasp?: string;
 }
 export interface WebSecModuleOutcome {
   id: string; label: string; status: string; duration_ms: number;

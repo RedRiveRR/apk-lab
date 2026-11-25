@@ -96,9 +96,22 @@ function FindingCard({ finding, open, onGuide }: { finding: WebSecFinding; open:
         </span>
         {finding.title}
         <span className="ms-2 text-xs text-(--iux-muted-foreground)">{finding.module}</span>
+        {finding.cwe ? (
+          <a
+            href={`https://cwe.mitre.org/data/definitions/${finding.cwe.replace(/^CWE-/, "")}.html`}
+            target="_blank"
+            rel="noreferrer"
+            title={[finding.cwe_name, finding.owasp].filter(Boolean).join(" · ")}
+            className="ms-2 rounded border border-(--iux-border) px-1.5 font-mono text-[10px] text-(--iux-muted-foreground) hover:underline"
+            translate="no"
+          >
+            {finding.cwe}
+          </a>
+        ) : null}
       </summary>
       <div className="mt-2 space-y-2 text-sm text-(--iux-muted-foreground)">
         <p>{finding.detail}</p>
+        {finding.owasp ? <p className="text-xs" translate="no">{`${finding.cwe} ${finding.cwe_name} · OWASP ${finding.owasp}`}</p> : null}
         {finding.evidence ? (
           <pre className="max-h-48 overflow-auto rounded bg-(--iux-bg) p-2 text-xs whitespace-pre-wrap break-words">
             {finding.evidence}

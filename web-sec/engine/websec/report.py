@@ -11,23 +11,90 @@ import re
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional
 
+from .taxonomy import annotate
 from .version import SCHEMA_VERSION, TOOL_NAME, TOOL_URI, VERSION
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 _SARIF_LEVEL = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "note"}
 _SECURITY_SEVERITY = {"critical": "9.5", "high": "8.0", "medium": "5.5", "low": "3.0", "info": "0.5"}
 FORMATS = ("json", "sarif", "markdown", "md", "text", "html")
+THRESHOLDS = ("none", "info", "low", "medium", "high", "critical")
+COVER_KEYS = ("client", "author", "title")
+MAX_COVER = 120
 
 
-def build(result) -> Dict[str, object]:
-    """The canonical document for one scan."""
+def clean_cover(cover: Optional[Dict[str, object]]) -> Dict[str, str]:
+    """Report-cover text (client, author, title): single-line, bounded, empty keys dropped."""
+    cleaned: Dict[str, str] = {}
+    for key in COVER_KEYS:
+        value = " ".join(str((cover or {}).get(key) or "").split())[:MAX_COVER]
+        if value:
+            cleaned[key] = value
+    return cleaned
+
+
+def build(result, cover: Optional[Dict[str, object]] = None) -> Dict[str, object]:
+    """The canonical document for one scan; every finding carries its CWE / OWASP label."""
     document = {
         "tool": {"name": TOOL_NAME, "version": VERSION, "uri": TOOL_URI,
                  "schema_version": SCHEMA_VERSION},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     document.update(result.as_dict())
+    document["findings"] = [annotate(dict(finding)) for finding in document["findings"]]
+    if clean_cover(cover):
+        document["cover"] = clean_cover(cover)
     return document
+
+
+def with_taxonomy(document: Dict[str, object]) -> Dict[str, object]:
+    """A stored report from before the CWE mapping, labelled on read; newer ones are unchanged."""
+    findings = document.get("findings") or []
+    if all("cwe" in finding for finding in findings):
+        return document
+    return {**document, "findings": [annotate(dict(finding)) for finding in findings]}
+
+
+def at_least(severity: str, threshold: str) -> bool:
+    """True when ``severity`` reaches ``threshold`` (``none`` never does)."""
+    if threshold not in THRESHOLDS or threshold == "none":
+        return False
+    return SEVERITIES.index(severity) <= SEVERITIES.index(threshold) if severity in SEVERITIES else False
+
+
+def exceeds(findings: Iterable[Dict[str, object]], threshold: str) -> List[Dict[str, object]]:
+    """The findings at or above the gate."""
+    return [finding for finding in findings if at_least(str(finding.get("severity")), threshold)]
+
+
+def _label(finding: Dict[str, object]) -> str:
+    cwe, owasp = str(finding.get("cwe") or ""), str(finding.get("owasp") or "")
+    return " · ".join(part for part in (cwe, owasp) if part)
+
+
+def ci_summary(document: Dict[str, object], new: Optional[List[Dict[str, object]]] = None,
+               threshold: str = "none") -> str:
+    """A short Markdown block for a CI job summary (``$GITHUB_STEP_SUMMARY``)."""
+    summary = document.get("summary") or {}
+    lines = [f"### {TOOL_NAME}: {document.get('target')} — grade {document.get('grade')} "
+             f"({document.get('score')}/100)", "",
+             "| " + " | ".join(SEVERITIES) + " | total |",
+             "| " + " | ".join("---:" for _ in SEVERITIES) + " | ---: |",
+             "| " + " | ".join(str(summary.get(severity, 0)) for severity in SEVERITIES)
+             + f" | {summary.get('total', 0)} |", ""]
+    if new is not None:
+        lines += [f"**{len(new)} new finding(s) since the baseline.**", ""]
+    shown = new if new is not None else list(document.get("findings") or [])
+    for finding in shown[:20]:
+        label = _label(finding)
+        lines.append(f"- **{finding.get('severity')}** {finding.get('title')} (`{finding.get('module')}`)"
+                     + (f" — {label}" if label else ""))
+    if len(shown) > 20:
+        lines.append(f"- … {len(shown) - 20} more")
+    if threshold != "none":
+        failing = exceeds(shown, threshold)
+        lines += ["", f"Gate `--fail-on {threshold}`: " + (f"**failed** ({len(failing)})" if failing else "passed")]
+    return "\n".join(lines) + "\n"
 
 
 def slug(text: str) -> str:
@@ -59,7 +126,9 @@ def to_sarif(document: Dict[str, object]) -> str:
                 "fullDescription": {"text": finding["detail"] or finding["title"]},
                 "help": {"text": finding["remediation"] or "Review the finding and the module data."},
                 "properties": {
-                    "tags": ["web", "posture", str(finding["module"])],
+                    "tags": ["web", "posture", str(finding["module"])]
+                    + ([f"external/cwe/{str(finding['cwe']).lower()}"] if finding.get("cwe") else [])
+                    + ([f"owasp/{str(finding['owasp']).split(' ')[0]}"] if finding.get("owasp") else []),
                     "security-severity": _SECURITY_SEVERITY[finding["severity"]],
                 },
             }
@@ -68,7 +137,8 @@ def to_sarif(document: Dict[str, object]) -> str:
             "level": _SARIF_LEVEL[finding["severity"]],
             "message": {"text": f"{finding['title']}. {finding['detail']}".strip()},
             "locations": [{"physicalLocation": {"artifactLocation": {"uri": document["url"]}}}],
-            "properties": {"module": finding["module"], "severity": finding["severity"]},
+            "properties": {"module": finding["module"], "severity": finding["severity"],
+                           **({"cwe": finding["cwe"], "owasp": finding.get("owasp", "")} if finding.get("cwe") else {})},
         })
     payload = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -97,10 +167,20 @@ def _summary_table(summary: Dict[str, int]) -> List[str]:
     return lines
 
 
+def _cover_lines(document: Dict[str, object]) -> List[str]:
+    cover = document.get("cover") or {}
+    parts = [f"Prepared for {cover['client']}" if cover.get("client") else "",
+             f"by {cover['author']}" if cover.get("author") else ""]
+    text = " ".join(part for part in parts if part)
+    return [text, ""] if text else []
+
+
 def to_markdown(document: Dict[str, object]) -> str:
+    cover = document.get("cover") or {}
     lines = [
-        f"# {TOOL_NAME} report — {document['target']}",
+        f"# {cover.get('title') or TOOL_NAME + ' report'} — {document['target']}",
         "",
+        *_cover_lines(document),
         f"**Grade {document['grade']}** · {document['score']}/100 · "
         f"scanned {document['started_at']} · {document['duration_seconds']}s · "
         f"preset `{document['preset']}`" + (" · active" if document["active"] else ""),
@@ -115,8 +195,9 @@ def to_markdown(document: Dict[str, object]) -> str:
     if findings:
         lines += ["## Findings", ""]
         for finding in findings:
+            label = _label(finding)
             lines += [f"### {finding['severity'].upper()} — {finding['title']}", "",
-                      f"Module: `{finding['module']}`", ""]
+                      f"Module: `{finding['module']}`" + (f" · {label}" if label else ""), ""]
             if finding["detail"]:
                 lines += [finding["detail"], ""]
             if finding["evidence"]:
@@ -147,7 +228,9 @@ def to_text(document: Dict[str, object]) -> str:
     summary = document["summary"]
     lines.append("findings: " + ", ".join(f"{severity} {summary[severity]}" for severity in SEVERITIES))
     for finding in document["findings"]:
-        lines.append(f"[{finding['severity']}] {finding['title']} ({finding['module']})")
+        label = _label(finding)
+        lines.append(f"[{finding['severity']}] {finding['title']} ({finding['module']}"
+                     + (f"; {label}" if label else "") + ")")
         if finding["detail"]:
             lines.append(f"    {finding['detail']}")
         if finding["remediation"]:
@@ -181,9 +264,11 @@ def to_html(document: Dict[str, object]) -> str:
     for finding in document["findings"]:
         evidence = f"<pre>{escape(finding['evidence'])}</pre>" if finding["evidence"] else ""
         fix = f"<p><strong>Fix:</strong> {escape(finding['remediation'])}</p>" if finding["remediation"] else ""
+        label = _label(finding)
+        tag = f' <span class="pill">{escape(label)}</span>' if label else ""
         rows.append(
             f'<article class="finding"><div class="sev {escape(finding["severity"])}">'
-            f'{escape(finding["severity"])} · <span class="pill">{escape(finding["module"])}</span></div>'
+            f'{escape(finding["severity"])} · <span class="pill">{escape(finding["module"])}</span>{tag}</div>'
             f'<h3>{escape(finding["title"])}</h3><p>{escape(finding["detail"])}</p>'
             f"{evidence}{fix}</article>"
         )
@@ -196,11 +281,19 @@ def to_html(document: Dict[str, object]) -> str:
     )
     summary = "".join(f"<tr><td>{severity}</td><td class='num'>{document['summary'][severity]}</td></tr>"
                       for severity in SEVERITIES)
+    cover = document.get("cover") or {}
+    heading = escape(str(cover.get("title") or document["target"]))
+    byline = " · ".join(escape(text) for text in (
+        f"Prepared for {cover['client']}" if cover.get("client") else "",
+        f"by {cover['author']}" if cover.get("author") else "") if text)
+    cover_html = (f'<p class="meta">{escape(str(document["target"]))}</p>' if cover.get("title") else "") + \
+        (f'<p class="meta">{byline}</p>' if byline else "")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(TOOL_NAME)} — {escape(str(document['target']))}</title><style>{_CSS}</style></head>
 <body><main>
-<h1>{escape(str(document['target']))}</h1>
+<h1>{heading}</h1>
+{cover_html}
 <p class="meta"><span class="grade">Grade {escape(str(document['grade']))}</span>
 {escape(str(document['score']))}/100 · {escape(str(document['duration_seconds']))}s · preset
 {escape(str(document['preset']))}{' · active' if document['active'] else ''}</p>

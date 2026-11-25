@@ -107,17 +107,16 @@ For locations, the state of the branch and the continuation checklist, read
 
 ### Engine port gaps
 
-1. **CI gates** from WebAnalyzer: `--fail-on <severity>`, `--baseline <report>`,
-   `--summary <file>` (`$GITHUB_STEP_SUMMARY`), `compare --fail-on-new`, and an
-   `action.yml` wrapper.
-2. **CWE / OWASP Top 10 mapping** per finding (`utils/taxonomy.py`), carried into
-   SARIF and the findings UI.
+1. ~~CI gates~~ — done: `--fail-on`, `--baseline`, `--summary`, `compare --fail-on-new`,
+   `web-sec/action.yml`.
+2. ~~CWE / OWASP Top 10 mapping~~ — done: `websec/taxonomy.py`, SARIF tags, the
+   findings UI, MCP summaries; old reports are labelled on read.
 3. **Monitor and notifications** (`monitor.py`, `utils/notify.py`): recurring scans
    of in-scope targets, alert on a regression; MCP tools for its config.
 4. **Content scan depth**: the wider pattern registry, entropy scoring and a static
    DOM-XSS source→sink pass over served scripts (all passive).
-5. HTML report cover (`--client`, `--author`, `--title`), `scan -l <file>` / stdin,
-   `--concurrency`.
+5. ~~Report cover, target lists, concurrency~~ — done: `--client/--author/--title` on
+   `scan` and `report`, `bulk -` reads stdin, `bulk --concurrency 1-8`.
 6. Decide on WebAnalyzer's Overview / Threat-intel / Network-map pages: port an
    overview or record the exclusion.
 
@@ -134,14 +133,12 @@ For locations, the state of the branch and the continuation checklist, read
 
 ### Documentation
 
-1. Record in `knowledge/upstream.md`: WebAnalyzer's API Security Scanner is excluded
-   (an active fuzzer), `verify` ownership proof is replaced by `scope.json`.
-2. `web-sec/README.md`: the `plan`, `compare`, `prefs` and `guides` commands and the
-   MCP tools.
+1. ~~upstream.md exclusions~~ — done (API Security Scanner, ownership/demo mode).
+2. ~~README~~ — done (new commands, CI and agents).
 
 ### Landing
 
-1. Commit the one-click pass (not committed yet).
+1. ~~Commit the one-click pass~~ — done.
 2. Optional: `cveLookup` and module selection in the bulk form.
 3. Full verification block, then e2e in an owner-approved mode: the Web Sec spec,
    then `--full` once before the PR. E2e is deliberately held until every item above

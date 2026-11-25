@@ -19,7 +19,32 @@ from .scope import Guard, ScopeRefused, describe
 from .version import VERSION
 
 MAX_BULK = 50
+MAX_CONCURRENCY = 8
+MAX_DOCUMENT = 4 * 1024 * 1024
+EXIT_GATE = 4  # findings at or above --fail-on / --fail-on-new
 _GRADE_EXIT = {"A": 0, "B": 0, "C": 1, "D": 2, "F": 3}
+
+
+def _load_baseline(value: str, target: str) -> Dict[str, object]:
+    """A baseline is a JSON report file, or the name of a stored report of the same target."""
+    if os.path.isfile(value):
+        if os.path.getsize(value) > MAX_DOCUMENT:
+            raise ValueError("the baseline is larger than 4 MiB")
+        with open(value, encoding="utf-8") as handle:
+            document = json.load(handle)
+    else:
+        document = History().load(target, value)
+    if not isinstance(document, dict) or not isinstance(document.get("findings"), list):
+        raise ValueError("the baseline is not a Web Sec Lab JSON report")
+    if str(document.get("target") or "") != target:
+        raise ValueError("the baseline is a report of another target")
+    return document
+
+
+def _append_summary(path: str, text: str) -> None:
+    # append: $GITHUB_STEP_SUMMARY is shared by every step of the job
+    with open(path, "a", encoding="utf-8", newline="\n") as handle:
+        handle.write(text + "\n")
 
 
 def _grade_exit(grade: str) -> int:
@@ -221,6 +246,13 @@ def scan(args) -> int:
     except ValueError as exc:
         _error(f"invalid options: {exc}")
         return 2
+    baseline = None
+    if args.baseline:
+        try:
+            baseline = _load_baseline(args.baseline, options.target)
+        except (OSError, ValueError) as exc:
+            _error(f"cannot use the baseline: {exc}")
+            return 2
     sink = _ProgressFile(args.progress) if args.progress else None
     try:
         result = run_scan(options, progress=sink)
@@ -233,7 +265,20 @@ def scan(args) -> int:
     finally:
         if sink is not None:
             sink.close()
-    document = report_module.build(result)
+    document = report_module.build(result, cover={"client": args.client, "author": args.author,
+                                                   "title": args.title})
+    new = diff_reports(document, baseline)["new"] if baseline is not None else None
+    gated = report_module.exceeds(new if new is not None else document["findings"], args.fail_on)
+    if args.summary:
+        try:
+            _append_summary(args.summary, report_module.ci_summary(document, new, args.fail_on))
+        except OSError as exc:
+            _error(f"cannot write the summary: {exc}")
+    if new is not None:
+        _error(f"{len(new)} new finding(s) since the baseline")
+    if gated:
+        _error(f"gate: {len(gated)} finding(s) at or above {args.fail_on}")
+    outcome = 1 if result.refused else EXIT_GATE if gated else 0
     fmt = "json" if args.json else args.format
     rendered = report_module.render(document, fmt)
     if options.keep_history:
@@ -253,7 +298,7 @@ def scan(args) -> int:
         _print(json.dumps(diff, indent=2, ensure_ascii=False) if fmt == "json" else _render_diff(diff))
         if paths:
             _error(f"history: {paths['history']}")
-        return 0 if not result.refused else 1
+        return outcome
     if args.out:
         target = args.out
         if os.path.isdir(target):
@@ -265,14 +310,20 @@ def scan(args) -> int:
         _print(rendered)
     if paths:
         _error(f"history: {paths['history']}")
-    return 0 if not result.refused else 1
+    return outcome
 
 
 def bulk(args) -> int:
     path = args.file
+    if not 1 <= args.concurrency <= MAX_CONCURRENCY:
+        _print(f"--concurrency must be between 1 and {MAX_CONCURRENCY}")
+        return 2
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
-            lines = [line.strip() for line in handle.read(200_000).splitlines()]
+        if path == "-":
+            lines = [line.strip() for line in sys.stdin.read(200_000).splitlines()]
+        else:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                lines = [line.strip() for line in handle.read(200_000).splitlines()]
     except OSError as exc:
         _print(f"cannot read {path}: {exc}")
         return 2
@@ -300,7 +351,7 @@ def bulk(args) -> int:
         except (ScopeRefused, ValueError) as exc:
             return {"target": target, "error": str(getattr(exc, "reason", exc))}
 
-    workers = max(1, min(4, len(targets)))
+    workers = max(1, min(args.concurrency, len(targets)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for entry in pool.map(one, targets):
             results.append(entry)
@@ -350,10 +401,13 @@ def report(args) -> int:
                 _print(f"{entry['name']}  {entry['bytes']} bytes")
         return 0
     try:
-        document = history.load(args.target, args.name)
+        document = report_module.with_taxonomy(history.load(args.target, args.name))
     except (OSError, ValueError) as exc:
         _print(f"cannot read the report: {exc}")
         return 2
+    cover = report_module.clean_cover({"client": args.client, "author": args.author, "title": args.title})
+    if cover:
+        document = {**document, "cover": {**(document.get("cover") or {}), **cover}}
     _print(report_module.render(document, "json" if args.json else args.format))
     return 0
 
@@ -434,10 +488,14 @@ def compare_command(args) -> int:
             _error("both reports must belong to the requested target")
             return 2
     diff = diff_reports(after, before)
+    gated = report_module.exceeds(diff["new"], args.fail_on_new)
+    diff["gate"] = {"threshold": args.fail_on_new, "failed": len(gated)}
     diff["from"] = {"name": args.old, "started_at": before.get("started_at"), "preset": before.get("preset")}
     diff["to"] = {"name": args.new, "started_at": after.get("started_at"), "preset": after.get("preset")}
     _print(json.dumps(diff, indent=2, ensure_ascii=False) if args.json else _render_diff(diff))
-    return 0
+    if gated:
+        _error(f"gate: {len(gated)} new finding(s) at or above {args.fail_on_new}")
+    return EXIT_GATE if gated else 0
 
 
 def prefs_command(args) -> int:
@@ -504,6 +562,12 @@ def plugins(args) -> int:
     return 0
 
 
+def _cover_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--client", default="", help="client name on the report cover")
+    parser.add_argument("--author", default="", help="who prepared the report")
+    parser.add_argument("--title", default="", help="report title (default: the target)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="websec", description="Web Sec Lab — scope-guarded web posture assessment")
@@ -540,10 +604,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--timeout", type=float, default=6.0)
     p_scan.add_argument("--deadline", type=float, default=60.0)
     p_scan.add_argument("--scope", default="", help="scope manifest path")
+    p_scan.add_argument("--fail-on", default="none", choices=report_module.THRESHOLDS,
+                        help=f"exit {EXIT_GATE} when a finding (a new one with --baseline) is at least this severe")
+    p_scan.add_argument("--baseline", default="", metavar="REPORT",
+                        help="a JSON report file or stored report name; --fail-on then counts only new findings")
+    p_scan.add_argument("--summary", default="", metavar="FILE",
+                        help="append a Markdown summary to FILE, such as $GITHUB_STEP_SUMMARY")
+    _cover_arguments(p_scan)
     p_scan.set_defaults(func=scan)
 
     p_bulk = sub.add_parser("bulk", help="scan a file of targets, four at a time")
-    p_bulk.add_argument("file")
+    p_bulk.add_argument("file", help="one target per line; '-' reads standard input")
     p_bulk.add_argument("--preset", default="quick", choices=("quick", "standard", "full"))
     p_bulk.add_argument("--active", action="store_true")
     p_bulk.add_argument("--json", action="store_true")
@@ -552,6 +623,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "(0 through B, 1 C, 2 D, 3 F or refused)")
     p_bulk.add_argument("--out", default="")
     p_bulk.add_argument("--timeout", type=float, default=6.0)
+    p_bulk.add_argument("--concurrency", type=int, default=4,
+                        help=f"targets scanned at once (1-{MAX_CONCURRENCY}, default 4)")
     p_bulk.set_defaults(func=bulk)
 
     p_report = sub.add_parser("report", help="list or render a stored report")
@@ -560,6 +633,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument("--list", action="store_true")
     p_report.add_argument("--format", default="markdown", choices=("json", "sarif", "markdown", "text", "html"))
     p_report.add_argument("--json", action="store_true")
+    _cover_arguments(p_report)
     p_report.set_defaults(func=report)
 
     p_history = sub.add_parser("history", help="recent scans")
@@ -583,6 +657,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_compare.add_argument("--old", required=True, help="the earlier report name")
     p_compare.add_argument("--new", required=True, help="the later report name")
     p_compare.add_argument("--json", action="store_true")
+    p_compare.add_argument("--fail-on-new", default="none", choices=report_module.THRESHOLDS,
+                           help=f"exit {EXIT_GATE} when a new finding is at least this severe")
     p_compare.set_defaults(func=compare_command)
 
     p_prefs = sub.add_parser("prefs", help="read or save the workbench choices")

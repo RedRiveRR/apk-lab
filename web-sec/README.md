@@ -25,6 +25,11 @@ cp console/scope.example.json scope.json     # then list the hosts you own
 ./labctl websec bulk targets.txt --csv                             # one row per target; exits with the worst grade
 ./labctl websec history --limit 10
 ./labctl websec report --target example.test --list
+./labctl websec plan example.test --preset full --json             # what a scan would run; sends nothing
+./labctl websec compare --target example.test --old A.json --new B.json --fail-on-new high
+./labctl websec scan example.test --fail-on high --baseline A.json --summary "$GITHUB_STEP_SUMMARY"
+./labctl websec prefs --json                                       # the workbench's saved choices
+./labctl websec guides                                             # the SecOps guides
 ```
 
 `./labctl websec` is `python3 web-sec/run.py`. The same commands work directly
@@ -53,7 +58,21 @@ JSON, SARIF 2.1.0, Markdown, text and a self-contained HTML page. Rule ids are
 `WEBSEC/<module>/<kind>` — the stable kind each check declares — so a reworded
 finding does not become a new rule, and `security-severity` follows the usual
 9.5 → 0.5 mapping, so the SARIF drops straight into GitHub code scanning or any
-SARIF viewer. The schema is in [knowledge/report-schema.md](knowledge/report-schema.md).
+SARIF viewer. Findings carry a CWE and OWASP Top 10 label when the match is clear.
+`--client`, `--author` and `--title` put a cover on the HTML and Markdown report.
+The schema, the CI gates and the exit codes are in
+[knowledge/report-schema.md](knowledge/report-schema.md).
+
+## CI and agents
+
+[`action.yml`](action.yml) runs one scope-checked scan in GitHub Actions: SARIF
+(optionally uploaded to code scanning), a job summary and a `fail-on` gate. The scope
+file in the repository is the authorization record.
+
+The os-lab MCP server (`console/mcp_server.py`) carries the workbench as `websec_*`
+tools ([console/mcp_websec.py](../console/mcp_websec.py)): read-only status,
+catalogue, guides, history, reports and compare; `websec_review`, which sends
+nothing; `websec_scan` as a job, where intrusive checks need `confirm: true`.
 
 ## State and privacy
 

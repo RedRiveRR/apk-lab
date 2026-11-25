@@ -20,6 +20,9 @@ implementation's internals.
 | WebAnalyzer `modules/registry.py` | `websec/registry.py` | same decorator/registry idea; ids are stable snake_case, labels are display text |
 | WebAnalyzer plugins | `websec/plugins/` | same contract: `@module(...)`, one file per plugin, `WEBSEC_PLUGIN_DIRS` |
 | WebAnalyzer `utils/formats.py` | `websec/report.py` | SARIF rule ids are `WEBSEC/…`, not `WA/…` |
+| WebAnalyzer `utils/taxonomy.py` | `websec/taxonomy.py` | same conservative CWE / OWASP 2021 table, plus a per-check fallback |
+| WebAnalyzer `cli.py` `--fail-on`, `--baseline`, `--summary`, `diff --fail-on-new`, `--client/--author/--title` | `websec/cli.py` | the gate exits `4` (1 is a scope refusal here); the baseline may be a stored report name |
+| WebAnalyzer `action.yml` | `web-sec/action.yml` | one target per step, and the scope file is a required input |
 | WebQ Tauri commands | checks + `websec_history` | one check per command family; SQLite replaced by bounded JSONL |
 | WebQ `honeypot.rs` | not ported | see below |
 
@@ -31,6 +34,8 @@ implementation's internals.
 | `WebQ` `scan_react_rce_command`, `scan_react_rce_full`, `scan_react2shell` | RCE confirmation probes; the defensive half is `react_exposure` |
 | `WebQ` honeypot listener | a decoy service would need its own isolation story; out of scope for this pass |
 | WebAnalyzer database, FastAPI dashboard, Docker image | the lab uses os-lab's console and dashboard instead |
+| WebAnalyzer `modules/api_security_scanner.py` ("API Security Scanner", the 17th module wired in `main.py`) and WebQ `scan_api_security` | an active fuzzer that probes guessed API paths with injection payloads; the passive half (exposed files, framework data, headers) is already covered |
+| WebAnalyzer `verify` / `utils/ownership.py` (DNS TXT ownership proof for a public demo) and `utils/safety.py` demo mode | replaced by the declared scope (`scope.json`), which every transport checks; this lab is never a public multi-tenant service |
 | Any DoS, brute force or path-dictionary loop | replaced by bounded, fixed-list checks |
 
 ## Adaptations worth knowing

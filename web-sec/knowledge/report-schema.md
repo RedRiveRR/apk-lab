@@ -22,9 +22,14 @@ numbers.
   "refused": false,
   "refusal": "",
   "modules": [],
-  "findings": []
+  "findings": [],
+  "cover": {"client": "Acme", "author": "Blue team", "title": "Quarterly review"}
 }
 ```
+
+`cover` is present only when `--client`, `--author` or `--title` was given (each at
+most 120 characters, one line); `report --target … --name …` can add or override it
+when rendering a stored report.
 
 `score` starts at 100 and loses points per finding: critical 25, high 12, medium 5,
 low 2, info 0 — at most three findings of one severity per module. `grade` maps
@@ -63,7 +68,10 @@ for a failed check. `data` is the module's own bounded JSON.
   "evidence": "",
   "remediation": "Start with a report-only policy, then enforce script-src 'self'.",
   "refs": [],
-  "kind": "csp-missing"
+  "kind": "csp-missing",
+  "cwe": "CWE-693",
+  "cwe_name": "Protection Mechanism Failure",
+  "owasp": "A05:2021 Security Misconfiguration"
 }
 ```
 
@@ -71,6 +79,12 @@ for a failed check. `data` is the module's own bounded JSON.
 stable rule identity every check declares; SARIF and `scan --diff` match
 findings by it, so rewording a title does not create a new rule. Evidence is
 truncated to 1200 characters and secrets are masked before they reach a report.
+
+`cwe`, `cwe_name` and `owasp` come from [`websec/taxonomy.py`](../engine/websec/taxonomy.py),
+a conservative table ported from WebAnalyzer: the kind, title and detail are
+matched first, then a small per-check fallback; anything unclear stays an empty
+string rather than a guess. Reports stored before the mapping are labelled when
+they are read.
 
 ## SARIF 2.1.0
 
@@ -80,6 +94,19 @@ truncated to 1200 characters and secrets are masked before they reach a report.
 - Level: critical/high → `error`, medium → `warning`, low/info → `note`.
 - `properties["security-severity"]`: 9.5, 8.0, 5.5, 3.0, 0.5.
 - Each result points at the target URL as its artifact location.
+- A classified rule is tagged `external/cwe/cwe-<n>` and `owasp/A0x:2021`, and its
+  results carry `cwe` and `owasp` properties, so code scanning groups them by CWE.
+
+## CI gates and exit codes
+
+`scan`: `0` clean, `1` refused by the scope, `2` usage error, `4` a finding at or
+above `--fail-on` (`none` by default). With `--baseline <report.json | stored name>`
+the gate counts only findings that are new since that report (the `scan --diff`
+matching). `--summary <file>` appends a Markdown block — grade, counts, the findings
+(or the new ones) with their CWE, the gate result — to a file such as
+`$GITHUB_STEP_SUMMARY`. `compare --fail-on-new <level>` exits `4` when the later
+run adds a finding at or above the level. `bulk` keeps its worst-grade exit code.
+[`web-sec/action.yml`](../action.yml) wraps `scan` as a GitHub composite action.
 
 ## Markdown and HTML
 

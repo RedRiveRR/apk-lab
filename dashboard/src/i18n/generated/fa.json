@@ -3246,5 +3246,7 @@
   "A policy that does not send full URLs to other origins.": "سیاستی که نشانی کامل را به مبداهای دیگر نمی‌فرستد.",
   "Present, turning off features the site does not use.": "موجود، و قابلیت‌هایی را که سایت استفاده نمی‌کند خاموش می‌کند.",
   "Never * together with credentials.": "هرگز * همراه با اعتبارنامه.",
-  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ HttpOnly برای کوکی‌های نشست؛ SameSite، و None فقط همراه Secure."
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ HttpOnly برای کوکی‌های نشست؛ SameSite، و None فقط همراه Secure.",
+  "The scope refuses this target:": "دامنه این هدف را رد می‌کند:",
+  "Scope rule": "قاعدهٔ دامنه"
 }

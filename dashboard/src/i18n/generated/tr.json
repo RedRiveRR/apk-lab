@@ -3246,5 +3246,7 @@
   "A policy that does not send full URLs to other origins.": "Diğer kaynaklara tam URL göndermeyen bir politika.",
   "Present, turning off features the site does not use.": "Mevcut, sitenin kullanmadığı özellikleri kapatır.",
   "Never * together with credentials.": "Kimlik bilgileriyle birlikte asla *.",
-  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; oturum çerezleri için HttpOnly; SameSite, None yalnızca Secure ile."
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; oturum çerezleri için HttpOnly; SameSite, None yalnızca Secure ile.",
+  "The scope refuses this target:": "Kapsam bu hedefi reddediyor:",
+  "Scope rule": "Kapsam kuralı"
 }

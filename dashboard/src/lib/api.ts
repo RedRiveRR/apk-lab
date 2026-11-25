@@ -831,6 +831,12 @@ export interface WebSecMonitorStatus {
   events: WebSecMonitorEvent[]; intervals: number[];
   runner?: { alive: boolean; running: boolean; lastTick: { at: number; error: string; events: number; scanned: number } };
 }
+export interface WebSecPlan {
+  target: string; url: string; preset: string; scheme: string; active: boolean;
+  scope: { allowed: boolean; reason: string; rule: string };
+  checks: { id: string; label: string; active: boolean; weight: string; runs: boolean; note: string }[];
+  intrusive: string[]; available_intrusive: string[]; runs: number;
+}
 export interface WebSecGuide { id: string; title: string; checks: string[]; points: string[]; refs: string[] }
 export interface WebSecReference {
   ports: { port: number; service: string; kind: "database" | "plaintext" | "admin" | "service" }[];
@@ -1093,6 +1099,8 @@ export const api = {
   websecCompare: (target: string, oldName: string, newName: string) =>
     call<WebSecCompare>(`/api/websec/compare?target=${encodeURIComponent(target)}&old=${encodeURIComponent(oldName)}&new=${encodeURIComponent(newName)}`),
   websecGuides: () => call<WebSecGuides>("/api/websec/guides"),
+  websecPlan: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean }) =>
+    post<WebSecPlan>("/api/websec/plan", request),
   websecStats: () => call<WebSecStats>("/api/websec/runs/stats"),
   websecFavourite: (target: string, name: string, on: boolean) => post<{ favourite: boolean }>("/api/websec/runs/favourite", { target, name, on }),
   websecDeleteRuns: (target: string, names: string[]) => post<{ deleted: number }>("/api/websec/runs/delete", { target, names }),

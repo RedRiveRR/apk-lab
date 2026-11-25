@@ -57,11 +57,11 @@ function Chips({ values }: { values: string[] }) {
 function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   if (!rows.length) return null;
   return (
-    <table className="w-full text-left text-xs">
+    <table className="w-full text-start text-xs">
       <thead>
         <tr className="text-(--iux-muted-foreground)">
           {head.map((cell) => (
-            <th key={cell} className="py-1 pr-3 font-medium">{cell}</th>
+            <th key={cell} className="py-1 pe-3 font-medium">{cell}</th>
           ))}
         </tr>
       </thead>
@@ -69,7 +69,7 @@ function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
         {rows.map((row, index) => (
           <tr key={index} className="border-t border-(--iux-border)">
             {row.map((cell, cellIndex) => (
-              <td key={cellIndex} className="py-1 pr-3 align-top">{cell}</td>
+              <td key={cellIndex} className="py-1 pe-3 align-top">{cell}</td>
             ))}
           </tr>
         ))}

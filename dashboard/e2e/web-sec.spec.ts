@@ -668,3 +668,30 @@ test("history marks favourites, deletes selected runs after confirming, and clea
   await expect.poll(() => calls.length).toBe(3);
   expect(calls[2]).toEqual({ path: "/api/websec/runs/clear", body: { all: true } });
 });
+
+test("the confirmation dialog shows the engine's plan and blocks a refused target", async ({ page }) => {
+  await mockStatus(page, status);
+  const sent = await mockScan(page);
+  let refuse = false;
+  await page.route("**/api/websec/plan", (route) => route.fulfill({ json: {
+    target: "example.test", url: "https://example.test", preset: "standard", scheme: "https", active: true,
+    scope: refuse ? { allowed: false, reason: "example.test is not in the scope", rule: "" } : { allowed: true, reason: "", rule: "example.test" },
+    checks: [{ id: "tls_health", label: "TLS health", active: true, weight: "light", runs: !refuse, note: "" }],
+    intrusive: refuse ? [] : ["tls_health"], available_intrusive: ["tls_health"], runs: refuse ? 0 : 16 } }));
+
+  await page.goto("/web-sec/");
+  await page.getByRole("textbox", { name: "Target" }).fill("example.test");
+  await page.getByRole("main").getByLabel("Allow intrusive checks").check();
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("TLS health")).toBeVisible();          // from the engine, not the local table
+  await expect(dialog.getByText("Port exposure")).toHaveCount(0);
+  await expect(dialog.getByText("https://example.test")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  refuse = true;
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
+  await expect(dialog.getByText("example.test is not in the scope")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Run with intrusive checks" })).toBeDisabled();
+  expect(sent).toHaveLength(0);
+});

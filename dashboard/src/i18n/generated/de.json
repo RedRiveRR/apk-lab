@@ -3246,5 +3246,7 @@
   "A policy that does not send full URLs to other origins.": "Eine Richtlinie, die keine vollständigen URLs an andere Origins sendet.",
   "Present, turning off features the site does not use.": "Vorhanden, schaltet ungenutzte Funktionen ab.",
   "Never * together with credentials.": "Niemals * zusammen mit Anmeldedaten.",
-  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; HttpOnly für Sitzungs-Cookies; SameSite, None nur mit Secure."
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; HttpOnly für Sitzungs-Cookies; SameSite, None nur mit Secure.",
+  "The scope refuses this target:": "Der Umfang lehnt dieses Ziel ab:",
+  "Scope rule": "Umfangsregel"
 }

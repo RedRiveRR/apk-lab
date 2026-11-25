@@ -3246,5 +3246,7 @@
   "A policy that does not send full URLs to other origins.": "سياسة لا ترسل عناوين URL كاملة إلى أصول أخرى.",
   "Present, turning off features the site does not use.": "موجود، ويعطّل الميزات التي لا يستخدمها الموقع.",
   "Never * together with credentials.": "لا * أبدًا مع بيانات الاعتماد.",
-  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ وHttpOnly لملفات الجلسة؛ وSameSite، وNone فقط مع Secure."
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ وHttpOnly لملفات الجلسة؛ وSameSite، وNone فقط مع Secure.",
+  "The scope refuses this target:": "يرفض النطاق هذا الهدف:",
+  "Scope rule": "قاعدة النطاق"
 }

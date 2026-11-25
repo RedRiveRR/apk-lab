@@ -34,7 +34,7 @@ export function MonitorBanner({ monitor, onCompare }: { monitor: WebSecMonitorSt
               <>
                 <span dir="ltr" className="font-medium" translate="no">{warning.target}</span>
                 <span translate="no">{warning.message}</span>
-                <button type="button" className="underline" onClick={() => onCompare(warning.target)}>Compare runs</button>
+                <button type="button" className="iux-touch-target underline" onClick={() => onCompare(warning.target)}>Compare runs</button>
               </>
             ) : warning.message === "scope-expired" ? (
               <span>The scope has expired; monitor scans are refused until it is renewed.</span>
@@ -117,7 +117,7 @@ export function MonitorPanel({ monitor, error, reload, currentTarget }: {
             className="iux-input font-mono text-xs" placeholder="example.test" />
           <span className="text-xs text-(--iux-muted-foreground)">One host per line, up to 10.</span>
           {currentTarget && TARGET_PATTERN.test(currentTarget) && !targets.includes(currentTarget.toLowerCase()) ? (
-            <button type="button" className="self-start text-xs underline"
+            <button type="button" className="iux-touch-target self-start text-xs underline"
               onClick={() => setTargetsText([...targets, currentTarget.toLowerCase()].join("\n"))}>
               Add the current target
             </button>
@@ -175,7 +175,7 @@ export function MonitorPanel({ monitor, error, reload, currentTarget }: {
 
       {monitor.config.targets.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-start text-xs">
             <thead>
               <tr className="text-(--iux-muted-foreground)">
                 <th className="py-1">Target</th>

@@ -97,12 +97,13 @@ For locations, the state of the branch and the continuation checklist, read
 
 1. ~~Signal outside the window~~ — done: monitor events notify natively, escalate,
    remind while true, can be switched off; banner and Monitor row in the workbench.
-2. **Visual pass** after the functional work: 390 px and tablet, 200% zoom, both
-   themes, `fa`/`ar` right-to-left, coarse-pointer size of the severity chips,
-   drill-down toggles and check boxes.
-3. Use `/api/websec/plan` in the confirmation dialog so the engine's scope verdict
-   is shown, not only the client-side preset table.
-4. `Guide for <check>` is a dynamic accessible label and is not translated.
+2. **Visual pass** — code half done: logical `text-start`/`pe-3` for RTL, coarse-pointer
+   targets on chips, drill-down toggles, check boxes and text buttons. Still owed:
+   the browser check at 390 px/tablet, 200% zoom, both themes and `fa`/`ar` (with the
+   final e2e and crawl run).
+3. ~~Plan-backed confirmation~~ — done: the dialog shows the engine's intrusive list,
+   scope rule and URL, and blocks a refused target; local fallback for old consoles.
+4. ~~Guide label~~ — done: the accessible name is built from two translated text nodes.
 
 ### Engine port gaps
 
@@ -116,8 +117,7 @@ For locations, the state of the branch and the continuation checklist, read
    DOM-XSS source→sink pass (`checks/taint.py`), all passive.
 5. ~~Report cover, target lists, concurrency~~ — done: `--client/--author/--title` on
    `scan` and `report`, `bulk -` reads stdin, `bulk --concurrency 1-8`.
-6. Decide on WebAnalyzer's Overview / Threat-intel / Network-map pages: port an
-   overview or record the exclusion.
+6. ~~WebAnalyzer dashboard pages~~ — decided and recorded in `knowledge/upstream.md`.
 
 ### WebQ gaps
 

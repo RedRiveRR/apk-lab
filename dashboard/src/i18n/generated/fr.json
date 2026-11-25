@@ -3246,5 +3246,7 @@
   "A policy that does not send full URLs to other origins.": "Une politique qui n’envoie pas d’URL complètes à d’autres origines.",
   "Present, turning off features the site does not use.": "Présent, désactivant les fonctions que le site n’utilise pas.",
   "Never * together with credentials.": "Jamais * avec des identifiants.",
-  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure ; HttpOnly pour les cookies de session ; SameSite, et None seulement avec Secure."
+  "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure ; HttpOnly pour les cookies de session ; SameSite, et None seulement avec Secure.",
+  "The scope refuses this target:": "Le périmètre refuse cette cible :",
+  "Scope rule": "Règle de périmètre"
 }

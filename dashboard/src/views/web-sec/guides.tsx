@@ -16,7 +16,7 @@ function ReferenceTables({ reference }: { reference: WebSecReference }) {
     <section aria-labelledby="guide-reference" className="space-y-3 border-t border-(--iux-border) pt-3">
       <h3 id="guide-reference" className="font-semibold">Reference</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-start text-xs">
           <caption className="pb-1 text-start text-(--iux-muted-foreground)">Headers the posture check reads</caption>
           <thead><tr className="text-(--iux-muted-foreground)"><th className="py-1 pe-3">Header</th><th>Expected</th></tr></thead>
           <tbody>
@@ -30,7 +30,7 @@ function ReferenceTables({ reference }: { reference: WebSecReference }) {
         </table>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-start text-xs">
           <caption className="pb-1 text-start text-(--iux-muted-foreground)">Ports the exposure check connects to (intrusive, confirmed per scan)</caption>
           <thead><tr className="text-(--iux-muted-foreground)"><th className="py-1 pe-3">Port</th><th className="pe-3">Service</th><th>Kind</th></tr></thead>
           <tbody>

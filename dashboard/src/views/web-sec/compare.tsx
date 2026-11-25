@@ -58,7 +58,7 @@ export function ComparePanel({ reports, from, to, onFrom, onTo, diff, error, loa
             </span>
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-start text-xs">
               <thead>
                 <tr className="text-(--iux-muted-foreground)">
                   <th className="py-1">Severity</th>

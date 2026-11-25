@@ -30,6 +30,7 @@ import {
   type WebSecJob,
   type WebSecModule,
   type WebSecMonitorStatus,
+  type WebSecPlan,
   type WebSecPreferences,
   type WebSecReport,
   type WebSecReportFile,
@@ -158,6 +159,8 @@ export default function WebSecLabPage() {
   const [scheme, setScheme] = useState<"http" | "https">("https");
   const [active, setActive] = useState(false);
   const [confirmActive, setConfirmActive] = useState(false);
+  // the engine's no-network plan for the confirmation dialog; null = local fallback
+  const [plan, setPlan] = useState<WebSecPlan | null>(null);
   const [timeoutText, setTimeoutText] = useState("");
   const [deadlineText, setDeadlineText] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -450,6 +453,15 @@ export default function WebSecLabPage() {
     const clean = target.trim().toLowerCase();
     if (TARGET_PATTERN.test(clean)) setSavedTarget(clean);
     if (active && intrusiveModules.length) {
+      // Ask the engine what would run and whether the scope allows the target; an older
+      // console without /plan falls back to the catalogue's preset table.
+      setPlan(null);
+      try {
+        setPlan(await api.websecPlan({ target: target.trim(), preset, scheme, active: true,
+          modules: chosen.length ? chosen : undefined }));
+      } catch {
+        setPlan(null);
+      }
       setConfirmActive(true);
       return;
     }
@@ -716,7 +728,7 @@ export default function WebSecLabPage() {
             <span aria-hidden="true">·</span>
             {effective ? <><span dir="ltr" className="tabular-nums">{effective.length}</span> <span>checks</span></> : <span>preset checks</span>}
             <span aria-hidden="true">·</span>
-            <button type="button" className="underline" onClick={() => openRow("websec-options")}>Change</button>
+            <button type="button" className="iux-touch-target underline" onClick={() => openRow("websec-options")}>Change</button>
           </p>
 
           <label className="mt-3 flex items-start gap-2 text-sm">
@@ -755,18 +767,32 @@ export default function WebSecLabPage() {
             onClose={() => setConfirmActive(false)}
           >
             <div className="space-y-3 text-sm">
-              <p>The scan would run these checks actively:</p>
-              <ul className="list-disc space-y-1 ps-5">
-                {intrusiveModules.map((module) => (
-                  <li key={module.id}>
-                    {module.label}
-                    <span className="ms-1 font-mono text-xs text-(--iux-muted-foreground)">({module.id})</span>
-                  </li>
-                ))}
-              </ul>
+              {plan && !plan.scope.allowed ? (
+                <p role="alert" className="text-(--iux-danger)"><span>The scope refuses this target:</span> {plan.scope.reason}</p>
+              ) : (
+                <>
+                  <p>The scan would run these checks actively:</p>
+                  <ul className="list-disc space-y-1 ps-5">
+                    {(plan
+                      ? plan.checks.filter((check) => plan.intrusive.includes(check.id))
+                      : intrusiveModules).map((module) => (
+                      <li key={module.id}>
+                        {module.label}
+                        <span className="ms-1 font-mono text-xs text-(--iux-muted-foreground)">({module.id})</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {plan ? (
+                    <p className="text-xs text-(--iux-muted-foreground)">
+                      <span>Scope rule</span> <span dir="ltr" className="font-mono">{plan.scope.rule || plan.target}</span> · <span dir="ltr" className="tabular-nums">{plan.runs}</span> <span>checks</span> · <span dir="ltr">{plan.url}</span>
+                    </p>
+                  ) : null}
+                </>
+              )}
               {scopeNote ? <p className="text-xs text-(--iux-muted-foreground)">{scopeNote}</p> : null}
               <div className="flex flex-wrap gap-2 pt-1">
-                <button type="button" onClick={() => runScan(true)} className="iux-btn" data-variant="primary">
+                <button type="button" onClick={() => runScan(true)} className="iux-btn" data-variant="primary"
+                  disabled={!!plan && (!plan.scope.allowed || !plan.intrusive.length)}>
                   Run with intrusive checks
                 </button>
                 <button type="button" onClick={() => runScan(false)} className="iux-btn" data-variant="outline">
@@ -819,7 +845,7 @@ export default function WebSecLabPage() {
             <details className="mt-4 text-sm">
               <summary className="cursor-pointer text-(--iux-muted-foreground)">Checks</summary>
               <div className="mt-2 overflow-x-auto">
-                <table className="mt-2 w-full text-left text-xs">
+                <table className="mt-2 w-full text-start text-xs">
                   <thead>
                     <tr className="text-(--iux-muted-foreground)">
                       <th className="py-1">Check</th>
@@ -843,7 +869,7 @@ export default function WebSecLabPage() {
                                   aria-expanded={open}
                                   aria-controls={`${module.id}-panel`}
                                   onClick={() => toggleModule(module.id)}
-                                  className="inline-flex items-center gap-1 hover:underline"
+                                  className="iux-touch-target inline-flex items-center gap-1 hover:underline"
                                 >
                                   {open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}
                                   {module.label}
@@ -857,9 +883,12 @@ export default function WebSecLabPage() {
                             <td>{module.duration_ms} ms</td>
                             <td>
                               {guide ? (
-                                <IconButton label={`Guide for ${module.label}`} onClick={() => showGuide(guide)}>
-                                  <BookOpenIcon size={14} />
-                                </IconButton>
+                                <button type="button" title="Guide" onClick={() => showGuide(guide)}
+                                  className="iux-touch-target inline-flex size-7 items-center justify-center rounded-md border border-(--iux-border)/80 text-(--iux-muted-foreground) hover:bg-(--iux-muted)">
+                                  <BookOpenIcon size={14} aria-hidden="true" />
+                                  <span className="sr-only">Guide</span>
+                                  <span className="sr-only">{module.label}</span>
+                                </button>
                               ) : null}
                             </td>
                           </tr>
@@ -927,12 +956,12 @@ export default function WebSecLabPage() {
                   <span>Checks</span>
                   <span className="text-xs">{chosen.length ? "a chosen set replaces the preset" : "none chosen: the preset decides"}</span>
                   {selected.length ? (
-                    <button type="button" className="text-xs underline" onClick={() => setSelected([])}>Use the preset</button>
+                    <button type="button" className="iux-touch-target text-xs underline" onClick={() => setSelected([])}>Use the preset</button>
                   ) : null}
                 </legend>
                 <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
                   {modules.map((module) => (
-                    <label key={module.id} className="flex items-start gap-2 text-xs">
+                    <label key={module.id} className="iux-touch-target flex items-start gap-2 text-xs">
                       <input
                         type="checkbox"
                         checked={selected.includes(module.id)}
@@ -1084,7 +1113,7 @@ export default function WebSecLabPage() {
             {bulkJob?.state === "error" ? <p role="alert" className="mt-3 text-sm text-(--iux-danger)">The scan failed. {bulkJob.error}</p> : null}
             {bulkJob?.state === "done" && bulkJob.results ? (
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-start text-sm">
                   <thead>
                     <tr className="text-xs text-(--iux-muted-foreground)">
                       <th className="py-1">Target</th>
@@ -1126,7 +1155,7 @@ export default function WebSecLabPage() {
           >
             {modules.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-start text-xs">
                   <thead>
                     <tr className="text-(--iux-muted-foreground)">
                       <th className="py-1">Module</th>

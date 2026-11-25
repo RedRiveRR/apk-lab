@@ -228,7 +228,12 @@ test("UIA hotspots and keyboard input require preview, arm and explicit confirma
     }
   });
 
-  await page.getByRole("textbox", { name: "Text to type" }).fill("hello");
+  // The panel refreshes its control state after the click above; type once that settled, so a
+  // refresh cannot wipe the field between fill and Preview (the flake seen when run alone).
+  await expect(async () => {
+    await page.getByRole("textbox", { name: "Text to type" }).fill("hello");
+    await expect(page.getByRole("button", { name: "Preview text" })).toBeEnabled({ timeout: 1000 });
+  }).toPass({ timeout: 10000 });
   await page.getByRole("button", { name: "Preview text" }).click();
   await expect(page.getByRole("dialog")).toContainText("hello");
   await expect.poll(() => actions.length).toBe(1);
@@ -617,13 +622,13 @@ test("a restricted window is listed but disabled and never captured", async ({ p
       ]
     }
   }));
-  await page.route("**/api/labs/winapps/apps/*/screenshot", (route) => {
+  await page.route("**/api/labs/winapps/apps/*/screenshot*", (route) => {
     captured.push(new URL(route.request().url()).pathname);
     return route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
   });
 
   await page.goto("/labs/winapps/");
-  await expect(page.locator("select#winapps-window option", { hasText: "1Password" })).toBeDisabled();
+  await expect(page.getByRole("combobox", { name: "Window" }).locator("option", { hasText: "1Password" })).toBeDisabled();
   await expect(page.getByText("Some windows are restricted and cannot be mirrored.")).toBeVisible();
   await expect(page.locator("img[alt='Mirror of Notepad']")).toBeVisible();
   expect(captured.length).toBeGreaterThan(0);
@@ -655,7 +660,7 @@ test("a window that turns restricted stops being shown and captured", async ({ p
       json: { ...winapps, windows: [{ ...winapps.windows[0], restricted, reason: restricted ? "private-window" : null, title: restricted ? "(restricted)" : "Fixture - Notepad" }] }
     });
   });
-  await page.route("**/api/labs/winapps/apps/100/screenshot", (route) => {
+  await page.route("**/api/labs/winapps/apps/100/screenshot*", (route) => {
     captured.push("hit");
     return route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 });
   });
@@ -683,9 +688,9 @@ test("switching away from a restricted window clears its image before the next c
       }
     });
   });
-  await page.route("**/api/labs/winapps/apps/100/screenshot", (route) =>
+  await page.route("**/api/labs/winapps/apps/100/screenshot*", (route) =>
     route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 }));
-  await page.route("**/api/labs/winapps/apps/101/screenshot", async (route) => {
+  await page.route("**/api/labs/winapps/apps/101/screenshot*", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 6000));
     await route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 }).catch(() => undefined);
   });

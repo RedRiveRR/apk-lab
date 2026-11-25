@@ -3248,5 +3248,10 @@
   "Never * together with credentials.": "Nunca * junto con credenciales.",
   "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; HttpOnly para cookies de sesión; SameSite, y None solo con Secure.",
   "The scope refuses this target:": "El alcance rechaza este objetivo:",
-  "Scope rule": "Regla de alcance"
+  "Scope rule": "Regla de alcance",
+  "Web Sec Lab SecOps guides and reference": "Web Sec Lab: guías SecOps y referencia",
+  "Web Sec Lab bulk validation of up to 20 targets": "Web Sec Lab: validación masiva de hasta 20 objetivos",
+  "Web Sec Lab history: stored runs, favourites and statistics": "Historial de Web Sec Lab: ejecuciones guardadas, favoritos y estadísticas",
+  "Web Sec Lab monitor: recurring passive scans and regression alerts": "Monitor de Web Sec Lab: análisis pasivos periódicos y avisos de retroceso",
+  "Web Sec Lab: compare two runs of a target": "Web Sec Lab: comparar dos ejecuciones de un objetivo"
 }

@@ -81,7 +81,10 @@ export function sectionHref(id: string): string {
     return localized(`/cleanup/${page === "dashboard" ? "" : page + "/"}`) + (anchor ? `#${anchor}` : "");
   }
   if (id === "web-lab") return localized("/web-lab/");
-  if (id === "web-sec") return localized("/web-sec/");
+  if (id === "web-sec" || id.startsWith("web-sec#")) {
+    const anchor = id.split("#")[1];
+    return localized("/web-sec/") + (anchor ? `#${anchor}` : "");
+  }
   if (id === "firewall" || id === "firewall-lab" || id === "firewall-companies" || id === "firewall-add") {
     const locale = typeof window === "undefined" ? "en" : localeFromPath(window.location.pathname);
     const hash = id === "firewall-companies" ? "#companies" : id === "firewall-add" ? "#add" : "";
@@ -231,6 +234,11 @@ function buildGroups(labs: LabStatus[] | undefined, running: Set<string>, androi
       badge: running.has("websec") ? <RunningDot /> : <StatePill lab={lab("websec")} />,
       children: [
         { id: "web-sec", label: "Workbench" },
+        { id: "web-sec#websec-monitor", label: "Monitor" },
+        { id: "web-sec#websec-compare", label: "Compare runs" },
+        { id: "web-sec#websec-history", label: "History" },
+        { id: "web-sec#websec-bulk", label: "Bulk validation" },
+        { id: "web-sec#websec-guides", label: "Guides" },
         { id: "lab-websec", label: "Readiness & setup" }
       ]
     },
@@ -346,6 +354,11 @@ function buildMeta(): Record<string, SpotlightMeta> {
     "web-lab": { description: "Embedded in-app browser: open windows, inject JavaScript, read captured page activity", aliases: ["web", "browser", "webview", "injection", "javascript"] },
     "web-sec": { description: "Scope-guarded web posture assessment: scan a host, read findings, export SARIF or Markdown", aliases: ["websec", "web sec", "headers", "tls", "dast", "sarif"] },
     "lab-websec": { description: "Web Sec Lab readiness: Python, storage and the declared test scope", aliases: ["websec", "scope", "policy"] },
+    "web-sec#websec-monitor": { description: "Web Sec Lab monitor: recurring passive scans and regression alerts", aliases: ["websec monitor", "alerts", "schedule"] },
+    "web-sec#websec-compare": { description: "Web Sec Lab: compare two runs of a target", aliases: ["websec compare", "diff", "regression"] },
+    "web-sec#websec-history": { description: "Web Sec Lab history: stored runs, favourites and statistics", aliases: ["websec history", "runs"] },
+    "web-sec#websec-bulk": { description: "Web Sec Lab bulk validation of up to 20 targets", aliases: ["websec bulk", "domains"] },
+    "web-sec#websec-guides": { description: "Web Sec Lab SecOps guides and reference", aliases: ["websec guides", "secops", "cwe"] },
     "lab-web": { description: "Web Lab engine readiness: cargo, make and the built engine", aliases: ["web", "engine", "setup"] },
     firewall: { description: "BGT207 dream-company firewall designs — branches, segmentation, products and rule sets", aliases: ["firewall", "bgt207", "ufw", "rules", "vlan", "dmz", "company"] },
     health: { description: "GET /api/health", aliases: ["status", "api"] },

@@ -3248,5 +3248,10 @@
   "Never * together with credentials.": "هرگز * همراه با اعتبارنامه.",
   "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ HttpOnly برای کوکی‌های نشست؛ SameSite، و None فقط همراه Secure.",
   "The scope refuses this target:": "دامنه این هدف را رد می‌کند:",
-  "Scope rule": "قاعدهٔ دامنه"
+  "Scope rule": "قاعدهٔ دامنه",
+  "Web Sec Lab SecOps guides and reference": "راهنماها و مرجع SecOps در Web Sec Lab",
+  "Web Sec Lab bulk validation of up to 20 targets": "اعتبارسنجی گروهی تا ۲۰ هدف در Web Sec Lab",
+  "Web Sec Lab history: stored runs, favourites and statistics": "تاریخچهٔ Web Sec Lab: اجراهای ذخیره‌شده، علاقه‌مندی‌ها و آمار",
+  "Web Sec Lab monitor: recurring passive scans and regression alerts": "پایشگر Web Sec Lab: اسکن‌های غیرفعال دوره‌ای و هشدار پسرفت",
+  "Web Sec Lab: compare two runs of a target": "Web Sec Lab: مقایسهٔ دو اجرای یک هدف"
 }

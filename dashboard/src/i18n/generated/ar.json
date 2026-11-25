@@ -3248,5 +3248,10 @@
   "Never * together with credentials.": "لا * أبدًا مع بيانات الاعتماد.",
   "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure؛ وHttpOnly لملفات الجلسة؛ وSameSite، وNone فقط مع Secure.",
   "The scope refuses this target:": "يرفض النطاق هذا الهدف:",
-  "Scope rule": "قاعدة النطاق"
+  "Scope rule": "قاعدة النطاق",
+  "Web Sec Lab SecOps guides and reference": "أدلة SecOps والمرجع في Web Sec Lab",
+  "Web Sec Lab bulk validation of up to 20 targets": "التحقق الجماعي من 20 هدفًا كحد أقصى في Web Sec Lab",
+  "Web Sec Lab history: stored runs, favourites and statistics": "سجل Web Sec Lab: التشغيلات المحفوظة والمفضلة والإحصاءات",
+  "Web Sec Lab monitor: recurring passive scans and regression alerts": "مراقب Web Sec Lab: فحوص سلبية دورية وتنبيهات التراجع",
+  "Web Sec Lab: compare two runs of a target": "Web Sec Lab: مقارنة تشغيلين لهدف"
 }

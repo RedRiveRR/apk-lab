@@ -3248,5 +3248,10 @@
   "Never * together with credentials.": "Kimlik bilgileriyle birlikte asla *.",
   "Secure; HttpOnly for session cookies; SameSite, and None only with Secure.": "Secure; oturum çerezleri için HttpOnly; SameSite, None yalnızca Secure ile.",
   "The scope refuses this target:": "Kapsam bu hedefi reddediyor:",
-  "Scope rule": "Kapsam kuralı"
+  "Scope rule": "Kapsam kuralı",
+  "Web Sec Lab SecOps guides and reference": "Web Sec Lab SecOps kılavuzları ve başvuru",
+  "Web Sec Lab bulk validation of up to 20 targets": "Web Sec Lab ile en fazla 20 hedefin toplu doğrulaması",
+  "Web Sec Lab history: stored runs, favourites and statistics": "Web Sec Lab geçmişi: kayıtlı çalıştırmalar, favoriler ve istatistikler",
+  "Web Sec Lab monitor: recurring passive scans and regression alerts": "Web Sec Lab izleyicisi: yinelenen pasif taramalar ve gerileme uyarıları",
+  "Web Sec Lab: compare two runs of a target": "Web Sec Lab: bir hedefin iki çalıştırmasını karşılaştır"
 }

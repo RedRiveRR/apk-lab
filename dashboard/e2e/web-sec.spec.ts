@@ -695,3 +695,15 @@ test("the confirmation dialog shows the engine's plan and blocks a refused targe
   await expect(dialog.getByRole("button", { name: "Run with intrusive checks" })).toBeDisabled();
   expect(sent).toHaveLength(0);
 });
+
+test("the sidebar links straight to the workbench rows", async ({ page }) => {
+  await mockStatus(page, status);
+  await page.goto("/web-sec/");
+  const nav = page.getByRole("navigation").first();
+  await expect(nav.getByRole("link", { name: "Workbench" })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("link", { name: "Monitor" }).click();
+  await expect(page).toHaveURL(/\/web-sec\/#websec-monitor$/);
+  await expect(page.locator("#websec-monitor")).toHaveAttribute("open", "");
+  await nav.getByRole("link", { name: "Guides" }).click();
+  await expect(page.locator("#websec-guides")).toHaveAttribute("open", "");
+});

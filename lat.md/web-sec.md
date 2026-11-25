@@ -116,7 +116,7 @@ names and report names, never paths, URLs or commands, and are refused inside
 
 ## Dashboard
 
-`/web-sec/` is the workbench, implemented in [[dashboard/src/views/web-sec/pages.tsx]] on the one-click standard of [[lat.md/ux-readiness.md#One-click standard]].
+`/web-sec/` is the workbench (sidebar: Workbench, Monitor, Compare runs, History, Bulk validation, Guides, Readiness & setup; each row link opens its row by hash), implemented in [[dashboard/src/views/web-sec/pages.tsx]] on the one-click standard of [[lat.md/ux-readiness.md#One-click standard]].
 
 One primary action, **Scan** (shortcut `S` when no field has focus), goes from a
 target to a graded report; a one-line summary names the preset, protocol and check

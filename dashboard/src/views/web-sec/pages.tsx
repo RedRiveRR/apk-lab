@@ -29,6 +29,7 @@ import {
   type WebSecHistoryEntry,
   type WebSecJob,
   type WebSecModule,
+  type WebSecMonitorStatus,
   type WebSecPreferences,
   type WebSecReport,
   type WebSecReportFile,
@@ -38,6 +39,7 @@ import {
 import { hasData, ModulePanel } from "./panels";
 import { GuideModal } from "./guides";
 import { ComparePanel, regressed, runLabel } from "./compare";
+import { intervalLabel, MonitorBanner, MonitorPanel } from "./monitor";
 
 const SEVERITIES: WebSecSeverity[] = ["critical", "high", "medium", "low", "info"];
 const SEVERITY_CLASS: Record<WebSecSeverity, string> = {
@@ -189,6 +191,9 @@ export default function WebSecLabPage() {
   const [diffError, setDiffError] = useState("");
   const [diffLoading, setDiffLoading] = useState(false);
   const pendingCompare = useRef<{ from: string; to: string } | null>(null);
+  // monitor
+  const [monitor, setMonitor] = useState<WebSecMonitorStatus | null>(null);
+  const [monitorError, setMonitorError] = useState("");
 
   const report = loadedReport ?? (job?.state === "done" ? job.report : undefined);
   const running = job?.state === "running";
@@ -217,6 +222,18 @@ export default function WebSecLabPage() {
   useEffect(() => {
     api.websecHistory().then((value) => setHistory(value.entries)).catch(() => undefined);
     api.websecGuides().then(setGuides).catch((reason) => setGuidesError(errorText(reason)));
+  }, []);
+
+  const loadMonitor = () => {
+    api.websecMonitor().then((value) => {
+      setMonitor(value);
+      setMonitorError("");
+    }).catch((reason) => setMonitorError(errorText(reason)));
+  };
+  useEffect(() => {
+    loadMonitor();
+    const timer = window.setInterval(loadMonitor, 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   // Saved choices: read once, then every change is written back (debounced). A store from
@@ -554,6 +571,16 @@ export default function WebSecLabPage() {
     openRow("websec-compare");
   };
 
+  const compareTarget = (host: string) => {
+    if (host !== reportTarget) {
+      pendingCompare.current = null;
+      setLoadedReport(null);
+      setJob(null);
+      setTarget(host);
+    }
+    openRow("websec-compare");
+  };
+
   const openReport = async (name: string, format: string) => {
     if (!reportTarget) return;
     setError("");
@@ -618,6 +645,8 @@ export default function WebSecLabPage() {
             {error}
           </p>
         ) : null}
+
+        <MonitorBanner monitor={monitor} onCompare={compareTarget} />
 
         {status && !ready ? (
           <div className="space-y-2 rounded-md border border-(--iux-border) px-3 py-3 text-sm">
@@ -983,6 +1012,21 @@ export default function WebSecLabPage() {
               labels={moduleLabels}
               severityClass={SEVERITY_CLASS}
             />
+          </CareRow>
+
+          <CareRow
+            id="websec-monitor"
+            title="Monitor"
+            attention={!!monitor?.activeWarnings.length || !!monitor?.configError}
+            summary={!monitor
+              ? <span>{monitorError ? "unavailable" : "…"}</span>
+              : monitor.activeWarnings.length
+                ? <><span dir="ltr" className="tabular-nums">{monitor.activeWarnings.length}</span> <span>{monitor.activeWarnings.length === 1 ? "warning" : "warnings"}</span></>
+                : monitor.config.enabled
+                  ? <><span>on</span> · <span dir="ltr" className="tabular-nums">{monitor.config.targets.length}</span> <span>targets</span> · <span>{intervalLabel(monitor.config.intervalMinutes)}</span></>
+                  : <span>off</span>}
+          >
+            <MonitorPanel monitor={monitor} error={monitorError} reload={loadMonitor} currentTarget={target.trim()} />
           </CareRow>
 
           <CareRow id="websec-bulk" title="Bulk validation" summary={bulkSummary}>

@@ -78,6 +78,23 @@ before opening it. It also serves `/api/websec/preferences` (GET, POST),
 `/api/websec/plan` (POST), `/api/websec/compare` and `/api/websec/guides` through
 the engine; an engine usage error answers 400.
 
+## Monitor
+
+[[web-sec/engine/websec/monitor.py]] is the opt-in passive posture monitor; the console runs `monitor tick` every minute on a background thread.
+
+Config and state live in `web-sec/storage/monitor.json` (atomic, 0600): up to 10
+in-scope targets, an interval (hourly, 6 h, daily, weekly), a quick or standard
+preset, an alert threshold, notifications, reminder hours and scope-warning days.
+A tick scans only the due targets, never actively, stores the reports and compares
+each run with the previous one: `warning` (a new finding at or above the threshold,
+or a grade drop), `critical` (a new critical, or a fall to D/F), `escalated`,
+`reminder` while unresolved, `recovered`, `scope-expiring`/`scope-expired`, and one
+`error` per distinct failure. [[web-sec/engine/websec/notify.py]] sends a native
+notification per actionable event with fixed argv. An idle tick writes nothing,
+and [[console/websec_api.py#MonitorRunner]] never overlaps a workbench scan. The
+workbench shows a banner (linked to Compare runs) and a Monitor row; MCP has
+`websec_monitor`, `websec_monitor_config` and `websec_monitor_run`.
+
 ## MCP tools
 
 [[console/mcp_websec.py]] adds the Web Sec Lab to the os-lab MCP server on the same console API, engine and scope guard as the workbench.
@@ -101,11 +118,14 @@ dialog for the checks the selection would actually run, and is never saved.
 Findings, severity filters, per-module drill-down panels and a Guide button per
 finding and check follow the report.
 
+A monitor banner sits above the scan while a monitored target is worse than before.
+
 Everything else is a collapsed row of one list with a live summary: Scan options
 (preset, protocol, pacing, check selection; saved on this computer through the
 engine store), Reports (Markdown preview and JSON/SARIF/HTML/Markdown downloads),
 Compare runs ([[dashboard/src/views/web-sec/compare.tsx]], latest two runs by
-default, an attention dot when a run adds a critical or high finding), Bulk
+default, an attention dot when a run adds a critical or high finding), Monitor
+([[dashboard/src/views/web-sec/monitor.tsx]]), Bulk
 validation, History (open a run, or compare it with the one before), Catalogue,
 Guides and Environment. A row opens when a link or button targets its id.
 [[dashboard/src/views/web-sec/guides.tsx]] shows the SecOps guides as a modal,

@@ -813,6 +813,19 @@ export interface WebSecCompare {
   from: { name: string; started_at?: string; preset?: string };
   to: { name: string; started_at?: string; preset?: string };
 }
+export interface WebSecMonitorConfig {
+  enabled: boolean; targets: string[]; intervalMinutes: number; preset: "quick" | "standard";
+  alertOn: "critical" | "high" | "medium" | "low"; notify: boolean; reminderHours: number; scopeWarnDays: number;
+}
+export interface WebSecMonitorWarning { target: string; level: "warning" | "critical"; since: number; message: string; flagged: string[] }
+export interface WebSecMonitorEvent { at: number; kind: string; target: string; message: string }
+export interface WebSecMonitorTarget { lastRun?: number; status?: string; error?: string; grade?: string; score?: number; lastReport?: string }
+export interface WebSecMonitorStatus {
+  config: WebSecMonitorConfig; configError: string | null;
+  targets: Record<string, WebSecMonitorTarget>; activeWarnings: WebSecMonitorWarning[];
+  events: WebSecMonitorEvent[]; intervals: number[];
+  runner?: { alive: boolean; running: boolean; lastTick: { at: number; error: string; events: number; scanned: number } };
+}
 export interface WebSecGuide { id: string; title: string; checks: string[]; points: string[]; refs: string[] }
 export interface WebSecGuides { guides: WebSecGuide[]; byCheck: Record<string, string> }
 
@@ -1071,6 +1084,9 @@ export const api = {
   websecCompare: (target: string, oldName: string, newName: string) =>
     call<WebSecCompare>(`/api/websec/compare?target=${encodeURIComponent(target)}&old=${encodeURIComponent(oldName)}&new=${encodeURIComponent(newName)}`),
   websecGuides: () => call<WebSecGuides>("/api/websec/guides"),
+  websecMonitor: () => call<WebSecMonitorStatus>("/api/websec/monitor"),
+  websecMonitorConfig: (config: WebSecMonitorConfig) => post<WebSecMonitorStatus>("/api/websec/monitor/config", { config }),
+  websecMonitorRun: () => post<{ queued: boolean }>("/api/websec/monitor/run", {}),
   websecReport: (target: string, name: string, format: string) =>
     call<{ content: string; format: string; name: string }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
   upload: async (file: File) => {

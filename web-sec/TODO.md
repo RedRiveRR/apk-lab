@@ -95,9 +95,8 @@ For locations, the state of the branch and the continuation checklist, read
 
 ### UX standard (lat.md/ux-readiness.md)
 
-1. **Signal outside the window.** A desktop notification and banner when a run adds a
-   critical/high finding or the scope is about to expire; escalate, repeat while
-   true, switch off. Needs the monitor (engine item 3).
+1. ~~Signal outside the window~~ — done: monitor events notify natively, escalate,
+   remind while true, can be switched off; banner and Monitor row in the workbench.
 2. **Visual pass** after the functional work: 390 px and tablet, 200% zoom, both
    themes, `fa`/`ar` right-to-left, coarse-pointer size of the severity chips,
    drill-down toggles and check boxes.
@@ -111,8 +110,8 @@ For locations, the state of the branch and the continuation checklist, read
    `web-sec/action.yml`.
 2. ~~CWE / OWASP Top 10 mapping~~ — done: `websec/taxonomy.py`, SARIF tags, the
    findings UI, MCP summaries; old reports are labelled on read.
-3. **Monitor and notifications** (`monitor.py`, `utils/notify.py`): recurring scans
-   of in-scope targets, alert on a regression; MCP tools for its config.
+3. ~~Monitor and notifications~~ — done: `websec/monitor.py`, `websec/notify.py`,
+   console runner, `/api/websec/monitor*`, three MCP tools.
 4. ~~Content scan depth~~ — done: 25 patterns with an entropy floor and a static
    DOM-XSS source→sink pass (`checks/taint.py`), all passive.
 5. ~~Report cover, target lists, concurrency~~ — done: `--client/--author/--title` on

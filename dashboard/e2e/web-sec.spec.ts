@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { WebSecCompare, WebSecGuides, WebSecJob, WebSecModule, WebSecPreferences, WebSecReport, WebSecStatus } from "../src/lib/api";
+import type { WebSecCompare, WebSecGuides, WebSecJob, WebSecModule, WebSecMonitorConfig, WebSecMonitorStatus, WebSecPreferences, WebSecReport, WebSecStatus } from "../src/lib/api";
 
 const status: WebSecStatus = {
   state: "ready",
@@ -60,6 +60,12 @@ const guides: WebSecGuides = {
   byCheck: { security_analysis: "headers" }
 };
 
+const monitorOff: WebSecMonitorStatus = {
+  config: { enabled: false, targets: [], intervalMinutes: 1440, preset: "quick", alertOn: "high", notify: true, reminderHours: 24, scopeWarnDays: 14 },
+  configError: null, targets: {}, activeWarnings: [], events: [], intervals: [60, 360, 1440, 10080],
+  runner: { alive: true, running: false, lastTick: { at: 0, error: "", events: 0, scanned: 0 } }
+};
+
 const job = (state: WebSecJob["state"], extra: Partial<WebSecJob> = {}): WebSecJob => ({
   id: "scan-1", state, target: "example.test", preset: "standard", active: true, started: 1, ...extra
 });
@@ -72,6 +78,7 @@ async function mockStatus(page: Page, value: WebSecStatus, saved: WebSecPreferen
   await page.route("**/api/websec/history*", (route) => route.fulfill({ json: { entries: [] } }));
   await page.route("**/api/websec/reports*", (route) => route.fulfill({ json: { reports: [] } }));
   await page.route("**/api/websec/guides", (route) => route.fulfill({ json: guides }));
+  await page.route("**/api/websec/monitor", (route) => route.fulfill({ json: monitorOff }));
   await page.route("**/api/websec/preferences", (route) => {
     if (route.request().method() === "POST") {
       const body = route.request().postDataJSON() as WebSecPreferences;
@@ -478,6 +485,7 @@ test("every workbench ability is still listed and each row opens", async ({ page
     ["Scan options", "Request timeout (s)"],
     ["Reports", "No scans yet."],
     ["Compare runs", "Run two scans of this target to compare them."],
+    ["Monitor", "Monitor these targets"],
     ["Bulk validation", "Targets file"],
     ["History", "No scans yet."],
     ["Catalogue", "Nmap Zero Day Scan"],
@@ -510,4 +518,52 @@ test("the workbench holds 390 px without horizontal overflow", async ({ page }) 
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("the monitor warns in a banner, links to compare, and saves its config", async ({ page }) => {
+  await mockStatus(page, status);
+  const warned: WebSecMonitorStatus = {
+    ...monitorOff,
+    config: { ...monitorOff.config, enabled: true, targets: ["example.test"] },
+    targets: { "example.test": { lastRun: 1764000000, status: "ok", grade: "B", score: 84, lastReport: "20261124T000000Z-84.json" } },
+    activeWarnings: [{ target: "example.test", level: "critical", since: 1764000000, flagged: ["content_scan|aws"],
+      message: "1 new finding(s) at or above high; grade A → B. critical: AWS access key id appears in served content." }],
+    events: [{ at: 1764000000, kind: "critical", target: "example.test", message: "1 new finding(s) at or above high" }]
+  };
+  await page.route("**/api/websec/monitor", (route) => route.fulfill({ json: warned }));
+  const saved: WebSecMonitorConfig[] = [];
+  await page.route("**/api/websec/monitor/config", (route) => {
+    const body = route.request().postDataJSON() as { config: WebSecMonitorConfig };
+    saved.push(body.config);
+    return route.fulfill({ json: { ...warned, config: body.config } });
+  });
+  let ran = 0;
+  await page.route("**/api/websec/monitor/run", (route) => {
+    ran += 1;
+    return route.fulfill({ status: 202, json: { queued: true } });
+  });
+
+  await page.goto("/web-sec/");
+  const banner = page.getByRole("main").getByRole("alert").filter({ hasText: "The monitor found a serious regression" });
+  await expect(banner).toBeVisible();
+  await expect(banner.getByText("example.test")).toBeVisible();
+  await banner.getByRole("button", { name: "Compare runs" }).click();
+  await expect(page.getByRole("textbox", { name: "Target" })).toHaveValue("example.test");
+  await expect(page.locator("#websec-compare")).toHaveAttribute("open", "");
+
+  const row = page.locator("#websec-monitor");
+  await expect(row.locator("summary")).toContainText("1");
+  await openRow(page, "Monitor");
+  await row.getByLabel("Monitored targets").fill("example.test\nbad host");
+  await expect(row.getByText("Not a host name:")).toBeVisible();
+  await expect(row.getByRole("button", { name: "Save monitor" })).toBeDisabled();
+  await row.getByLabel("Monitored targets").fill("example.test\nsecond.test");
+  await row.getByLabel("How often").selectOption("360");
+  await row.getByLabel("Desktop notifications").uncheck();
+  await row.getByRole("button", { name: "Save monitor" }).click();
+  await expect(row.getByText("Saved on this computer")).toBeVisible();
+  expect(saved[0]).toMatchObject({ enabled: true, targets: ["example.test", "second.test"], intervalMinutes: 360, notify: false });
+  await row.getByRole("button", { name: "Check now" }).click();
+  await expect(row.getByText("The check started; results appear here when it finishes.")).toBeVisible();
+  expect(ran).toBe(1);
 });

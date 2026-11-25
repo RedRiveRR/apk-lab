@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { WebSecJob, WebSecModule, WebSecReport, WebSecStatus } from "../src/lib/api";
+import type { WebSecCompare, WebSecGuides, WebSecJob, WebSecModule, WebSecPreferences, WebSecReport, WebSecStatus } from "../src/lib/api";
 
 const status: WebSecStatus = {
   state: "ready",
@@ -47,19 +47,49 @@ const report: WebSecReport = {
   ]
 };
 
+const defaults: WebSecPreferences = {
+  scan: { target: "", preset: "standard", scheme: "https", modules: [], timeout: null, deadline: null },
+  bulk: { preset: "quick" }
+};
+
+const guides: WebSecGuides = {
+  guides: [
+    { id: "scope", title: "Scope and authorization", checks: [], points: ["Scan only hosts listed in scope.json, and only with written permission from their owner."], refs: [] },
+    { id: "headers", title: "Security headers and cookies", checks: ["security_analysis"], points: ["Mark session cookies Secure, HttpOnly and SameSite."], refs: ["https://owasp.org/www-project-secure-headers/"] }
+  ],
+  byCheck: { security_analysis: "headers" }
+};
+
 const job = (state: WebSecJob["state"], extra: Partial<WebSecJob> = {}): WebSecJob => ({
   id: "scan-1", state, target: "example.test", preset: "standard", active: true, started: 1, ...extra
 });
 
-async function mockStatus(page: Page, value: WebSecStatus) {
+/** Status, catalogue, empty history and reports, saved choices (GET + POST) and guides. */
+async function mockStatus(page: Page, value: WebSecStatus, saved: WebSecPreferences = defaults) {
+  const posted: WebSecPreferences[] = [];
   await page.route("**/api/websec/status", (route) => route.fulfill({ json: value }));
   await page.route("**/api/websec/modules", (route) => route.fulfill({ json: { modules } }));
   await page.route("**/api/websec/history*", (route) => route.fulfill({ json: { entries: [] } }));
   await page.route("**/api/websec/reports*", (route) => route.fulfill({ json: { reports: [] } }));
+  await page.route("**/api/websec/guides", (route) => route.fulfill({ json: guides }));
+  await page.route("**/api/websec/preferences", (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON() as WebSecPreferences;
+      posted.push(body);
+      return route.fulfill({ json: { preferences: body, configError: null, version: 1 } });
+    }
+    return route.fulfill({ json: { preferences: saved, configError: null, version: 1 } });
+  });
+  return posted;
 }
 
-test("a ready lab scans a target and shows the graded report", async ({ page }) => {
-  await mockStatus(page, status);
+/** Open one collapsed row of the options list by its title. */
+async function openRow(page: Page, title: string) {
+  await page.getByRole("main").locator("details > summary").filter({ has: page.getByText(title, { exact: true }) }).click();
+}
+
+/** A scan that is running on the first poll and done with `value` on the second. */
+async function mockScan(page: Page, value: WebSecReport = report) {
   const sent: Record<string, unknown>[] = [];
   let polls = 0;
   await page.route(/\/api\/websec\/scans$/, async (route) => {
@@ -68,17 +98,23 @@ test("a ready lab scans a target and shows the graded report", async ({ page }) 
   });
   await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
     polls += 1;
-    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report }) });
+    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report: value }) });
   });
+  return sent;
+}
+
+test("a ready lab scans a target and shows the graded report", async ({ page }) => {
+  await mockStatus(page, status);
+  const sent = await mockScan(page);
   await page.route("**/api/websec/history*", (route) => route.fulfill({
     json: { entries: [{ target: "example.test", scanned_at: "2026-11-24T00:00:00+00:00", grade: "A", score: 95, summary: { total: 1 } }] }
   }));
 
   await page.goto("/web-sec/");
   await expect(page.getByRole("main").getByRole("heading", { name: "Web Sec Lab" })).toBeVisible();
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
   await page.getByRole("main").getByLabel("Allow intrusive checks").check();
-  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
   await expect(page.getByRole("dialog").getByText("Port exposure")).toBeVisible();
   await expect(page.getByRole("dialog").getByText("websec-test")).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Run with intrusive checks" }).click();
@@ -101,7 +137,8 @@ test("a lab without a scope disables scanning and explains why", async ({ page }
   await page.goto("/web-sec/");
   await expect(page.getByRole("main").getByText("Needs setup")).toBeVisible();
   await expect(page.getByRole("main").getByText("Copy console/scope.example.json to scope.json and list the hosts you own.")).toBeVisible();
-  await expect(page.getByRole("main").getByRole("button", { name: "Scan" })).toBeDisabled();
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await expect(page.getByRole("main").getByRole("button", { name: "Scan", exact: true })).toBeDisabled();
   await expect(page.getByRole("main").getByRole("link", { name: "Status" })).toHaveAttribute("href", "/labs/websec/");
 });
 
@@ -114,7 +151,8 @@ test("a stored report opens as rendered Markdown", async ({ page }) => {
     json: { content: "# Web Sec Lab report — example.test", format: "markdown", name: "20261124T000000Z-95.json" }
   }));
   await page.goto("/web-sec/");
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await openRow(page, "Reports");
   await expect(page.getByRole("main").getByText("20261124T000000Z-95.json")).toBeVisible();
   await page.getByRole("main").getByRole("button", { name: "Open" }).click();
   await expect(page.getByRole("main").getByText("# Web Sec Lab report — example.test")).toBeVisible();
@@ -152,17 +190,13 @@ const reportWithModuleData: WebSecReport = {
 
 test("check rows open drill-down panels with the module's own data", async ({ page }) => {
   await mockStatus(page, status);
-  let polls = 0;
-  await page.route(/\/api\/websec\/scans$/, (route) => route.fulfill({ status: 202, json: job("running") }));
-  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
-    polls += 1;
-    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report: reportWithModuleData }) });
-  });
+  await mockScan(page, reportWithModuleData);
 
   await page.goto("/web-sec/");
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
-  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
   await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  await page.getByRole("main").locator("summary").filter({ hasText: /^Checks$/ }).click();
 
   const whoisToggle = page.getByRole("main").getByRole("button", { name: "Domain information" });
   await expect(whoisToggle).toHaveAttribute("aria-expanded", "false");
@@ -173,7 +207,7 @@ test("check rows open drill-down panels with the module's own data", async ({ pa
   await expect(whoisRegion.getByText("TEST Registrar")).toBeVisible();
   await expect(whoisRegion.getByText("ns1.example.test")).toBeVisible();
 
-  const headersToggle = page.getByRole("main").getByRole("button", { name: "Security posture" });
+  const headersToggle = page.getByRole("main").getByRole("button", { name: "Security posture", exact: true });
   await headersToggle.click();
   const headersRegion = page.getByRole("region", { name: "Security posture details" });
   await expect(headersRegion).toBeVisible();
@@ -195,7 +229,8 @@ test("stored reports download in every format with the right file name", async (
   });
 
   await page.goto("/web-sec/");
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await openRow(page, "Reports");
   await expect(page.getByRole("main").getByText("20261124T000000Z-95.json")).toBeVisible();
 
   for (const [button, extension] of [
@@ -205,7 +240,7 @@ test("stored reports download in every format with the right file name", async (
     ["Markdown", "md"]
   ] as const) {
     const pending = page.waitForEvent("download");
-    await page.getByRole("main").getByRole("button", { name: button }).click();
+    await page.getByRole("main").getByRole("button", { name: button, exact: true }).click();
     const download = await pending;
     expect(download.suggestedFilename()).toBe(`example.test.20261124T000000Z-95.${extension}`);
   }
@@ -243,6 +278,7 @@ test("a bulk job renders a grade per target and a refusal row", async ({ page })
   });
 
   await page.goto("/web-sec/");
+  await openRow(page, "Bulk validation");
   await page.getByRole("main").getByLabel("Targets file").setInputFiles({
     name: "targets.txt",
     mimeType: "text/plain",
@@ -259,22 +295,14 @@ test("a bulk job renders a grade per target and a refusal row", async ({ page })
 
 test("pacing overrides ride along with the scan request", async ({ page }) => {
   await mockStatus(page, status);
-  const sent: Record<string, unknown>[] = [];
-  let polls = 0;
-  await page.route(/\/api\/websec\/scans$/, async (route) => {
-    sent.push(route.request().postDataJSON());
-    return route.fulfill({ status: 202, json: job("running") });
-  });
-  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
-    polls += 1;
-    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report }) });
-  });
+  const sent = await mockScan(page);
 
   await page.goto("/web-sec/");
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await openRow(page, "Scan options");
   await page.getByRole("main").getByLabel("Request timeout (s)").fill("12");
   await page.getByRole("main").getByLabel("Scan budget (s)").fill("120");
-  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
   await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
   expect(sent[0]).toMatchObject({ target: "example.test", timeout: 12, deadline: 120 });
 });
@@ -293,12 +321,13 @@ test("a history row opens the stored report in the workbench", async ({ page }) 
   }));
 
   await page.goto("/web-sec/");
+  await openRow(page, "History");
   await expect(page.getByRole("main").getByText("2026-11-24T00:00:00+00:00")).toBeVisible();
   await page.getByRole("main").getByRole("button", { name: "Open" }).click();
-  await expect(page.getByRole("main").getByText("running")).toBeVisible();
-  await expect(page.getByRole("main").getByText("ok").first()).toBeVisible();
-  await expect(page.getByRole("main").getByText("pending")).toBeVisible();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
+  // a stored report is not a running scan: no live progress rows
+  await expect(page.getByRole("main").getByText("pending", { exact: true })).toHaveCount(0);
 });
 
 test("a running scan shows live per-check progress", async ({ page }) => {
@@ -314,30 +343,170 @@ test("a running scan shows live per-check progress", async ({ page }) => {
   });
 
   await page.goto("/web-sec/");
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
-  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
   await expect(page.getByRole("main").getByText("DNS records")).toBeVisible();
-  await expect(page.getByRole("main").getByText("running")).toBeVisible();
+  await expect(page.getByRole("main").getByText("running", { exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByText("security_analysis")).toBeVisible();
   await expect(page.getByRole("main").getByText("Content-Security-Policy is missing")).toBeVisible();
 });
 
+test("saved choices load from the engine store and every change is written back", async ({ page }) => {
+  const saved: WebSecPreferences = {
+    scan: { target: "saved.test", preset: "quick", scheme: "http", modules: ["dns_records", "retired_check"], timeout: 12, deadline: null },
+    bulk: { preset: "standard" }
+  };
+  const posted = await mockStatus(page, status, saved);
+  const sent = await mockScan(page);
+
+  await page.goto("/web-sec/");
+  await expect(page.getByRole("main").getByRole("textbox", { name: "Target" })).toHaveValue("saved.test");
+  await openRow(page, "Scan options");
+  await expect(page.getByRole("main").getByLabel("Preset", { exact: true })).toHaveValue("quick");
+  await expect(page.getByRole("main").getByLabel("Request timeout (s)")).toHaveValue("12");
+  expect(posted).toHaveLength(0); // loading is not a change
+
+  await page.getByRole("main").getByLabel("Preset", { exact: true }).selectOption("full");
+  await expect(page.getByRole("main").getByText("Saved on this computer")).toBeVisible();
+  // an id the catalogue no longer lists is kept in the store, never deleted
+  expect(posted.at(-1)).toMatchObject({ scan: { preset: "full", modules: ["dns_records", "retired_check"] }, bulk: { preset: "standard" } });
+
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  // ...but only catalogue ids are sent with a scan, and intrusive mode is never a saved choice
+  expect(sent[0]).toMatchObject({ target: "saved.test", preset: "full", scheme: "http", modules: ["dns_records"], active: false });
+  expect(JSON.stringify(posted)).not.toContain("active");
+});
+
+test("the S key starts a scan, but not while typing", async ({ page }) => {
+  await mockStatus(page, status);
+  const sent = await mockScan(page);
+  await page.goto("/web-sec/");
+  const input = page.getByRole("main").getByRole("textbox", { name: "Target" });
+  await input.fill("example.test");
+  await input.press("s");
+  await expect(input).toHaveValue("example.tests");
+  expect(sent).toHaveLength(0);
+  await input.fill("example.test");
+  await expect(page.getByRole("main").getByRole("button", { name: "Scan", exact: true })).toHaveAttribute("aria-keyshortcuts", "S");
+  await page.getByRole("main").getByRole("heading", { name: "Web Sec Lab" }).click();
+  await page.keyboard.press("s");
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  expect(sent).toHaveLength(1);
+});
+
+const diff: WebSecCompare = {
+  target: "example.test",
+  score: { current: 95, previous: 80, delta: 15 },
+  grade: { current: "A", previous: "B" },
+  summary: {
+    critical: { current: 0, previous: 0 }, high: { current: 0, previous: 1 }, medium: { current: 1, previous: 0 },
+    low: { current: 0, previous: 0 }, info: { current: 0, previous: 0 }, total: { current: 1, previous: 1 }
+  },
+  new: [{ module: "security_analysis", severity: "medium", title: "Content-Security-Policy is missing" }],
+  resolved: [{ module: "security_analysis", severity: "high", title: "HSTS is missing" }],
+  modules: [{ id: "security_analysis", previous: "error", current: "ok" }],
+  from: { name: "20261101T000000Z-80.json" },
+  to: { name: "20261124T000000Z-95.json" }
+};
+
+test("compare shows a run-to-run diff, from the row and from a history entry", async ({ page }) => {
+  await mockStatus(page, status);
+  const runs = [
+    { name: "20261124T000000Z-95.json", bytes: 2048, modified: 2 },
+    { name: "20261101T000000Z-80.json", bytes: 2048, modified: 1 }
+  ];
+  await page.route("**/api/websec/reports*", (route) => route.fulfill({ json: { reports: runs } }));
+  await page.route("**/api/websec/history*", (route) => route.fulfill({ json: { entries: [
+    { target: "example.test", scanned_at: "2026-11-24T00:00:00+00:00", grade: "A", score: 95, summary: { total: 1 }, preset: "standard", active: false, refused: false, name: runs[0].name },
+    { target: "example.test", scanned_at: "2026-11-01T00:00:00+00:00", grade: "B", score: 80, summary: { total: 1 }, preset: "standard", active: false, refused: false, name: runs[1].name }
+  ] } }));
+  const asked: { old: string | null; new: string | null }[] = [];
+  await page.route("**/api/websec/compare?*", (route) => {
+    const url = new URL(route.request().url());
+    asked.push({ old: url.searchParams.get("old"), new: url.searchParams.get("new") });
+    return route.fulfill({ json: diff });
+  });
+
+  await page.goto("/web-sec/");
+  // the default target comes from the latest history entry, and compare defaults to the latest two runs
+  await expect(page.getByRole("main").getByRole("textbox", { name: "Target" })).toHaveValue("example.test");
+  const summary = page.getByRole("main").locator("#websec-compare > summary");
+  await expect(summary).toContainText("B → A");
+  await openRow(page, "Compare runs");
+  const region = page.getByRole("region", { name: "Run comparison" });
+  await expect(region.getByText("80 → 95 (+15)")).toBeVisible();
+  await expect(region.getByText("Content-Security-Policy is missing")).toBeVisible();
+  await expect(region.getByText("HSTS is missing")).toBeVisible();
+  expect(asked[0]).toEqual({ old: runs[1].name, new: runs[0].name });
+
+  await openRow(page, "History");
+  await page.getByRole("main").getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(region).toBeVisible();
+  expect(asked.at(-1)).toEqual({ old: runs[1].name, new: runs[0].name });
+});
+
+test("SecOps guides open as a modal from a check and from the header", async ({ page }) => {
+  await mockStatus(page, status);
+  await mockScan(page);
+  await page.goto("/web-sec/");
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+
+  // from the finding: straight to the guide that explains its check
+  await page.getByRole("main").getByRole("button", { name: "Guide", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Security headers and cookies" })).toBeVisible();
+  await expect(dialog.getByText("Mark session cookies Secure, HttpOnly and SameSite.")).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Scope and authorization" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  // from the header: every guide
+  await page.getByRole("main").getByRole("button", { name: "SecOps guides" }).click();
+  await expect(dialog.getByRole("heading", { name: "Scope and authorization" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Security headers and cookies" })).toBeVisible();
+});
+
+test("every workbench ability is still listed and each row opens", async ({ page }) => {
+  await mockStatus(page, status);
+  await page.goto("/web-sec/");
+  await expect(page.getByRole("main").getByRole("button", { name: "Scan", exact: true })).toBeVisible();
+  await expect(page.getByRole("main").getByLabel("Allow intrusive checks")).toBeVisible();
+  const rows: [string, string][] = [
+    ["Scan options", "Request timeout (s)"],
+    ["Reports", "No scans yet."],
+    ["Compare runs", "Run two scans of this target to compare them."],
+    ["Bulk validation", "Targets file"],
+    ["History", "No scans yet."],
+    ["Catalogue", "Nmap Zero Day Scan"],
+    ["Guides", "Scope and authorization"],
+    ["Environment", "History keeps 50 runs and 20 reports per target."]
+  ];
+  const titles = await page.getByRole("main").locator("details[id^='websec-'] > summary span.font-medium").allTextContents();
+  expect(titles).toEqual(rows.map(([title]) => title));
+  for (const [title, content] of rows) {
+    const row = page.getByRole("main").locator("details[id^='websec-']").filter({ has: page.getByText(title, { exact: true }) });
+    await expect(row.getByText(content, { exact: true }).first()).toBeHidden();
+    await openRow(page, title);
+    await expect(row.getByText(content, { exact: true }).first()).toBeVisible();
+  }
+});
+
 test("the workbench holds 390 px without horizontal overflow", async ({ page }) => {
   await mockStatus(page, status);
-  let polls = 0;
-  await page.route(/\/api\/websec\/scans$/, (route) => route.fulfill({ status: 202, json: job("running") }));
-  await page.route(/\/api\/websec\/scans\/scan-1$/, (route) => {
-    polls += 1;
-    return route.fulfill({ json: polls < 2 ? job("running") : job("done", { report: reportWithModuleData }) });
-  });
+  await mockScan(page, reportWithModuleData);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/web-sec/");
-  await page.getByRole("main").getByLabel("Target").fill("example.test");
-  await page.getByRole("main").getByRole("button", { name: "Scan" }).click();
+  await page.getByRole("main").getByRole("textbox", { name: "Target" }).fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
   await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  await page.getByRole("main").locator("summary").filter({ hasText: /^Checks$/ }).click();
   await page.getByRole("main").getByRole("button", { name: "Domain information" }).click();
-  await page.getByRole("main").getByRole("button", { name: "Security posture" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Security posture", exact: true }).click();
+  for (const title of ["Scan options", "Catalogue", "Bulk validation"]) await openRow(page, title);
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);

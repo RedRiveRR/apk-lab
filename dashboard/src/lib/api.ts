@@ -796,6 +796,25 @@ export interface WebSecBulkJob {
   results?: { targets: WebSecBulkTarget[]; count: number }; error?: string;
 }
 
+export interface WebSecPreferences {
+  scan: { target: string; preset: string; scheme: "http" | "https"; modules: string[]; timeout: number | null; deadline: number | null };
+  bulk: { preset: string };
+}
+export interface WebSecPreferencesPayload { preferences: WebSecPreferences; configError: string | null; version: number }
+export interface WebSecDiffFinding { module: string; severity: WebSecSeverity; title: string }
+export interface WebSecCompare {
+  target: string;
+  score: { current: number; previous: number; delta: number };
+  grade: { current: string; previous: string };
+  summary: Record<WebSecSeverity | "total", { current: number; previous: number }>;
+  new: WebSecDiffFinding[]; resolved: WebSecDiffFinding[];
+  modules: { id: string; previous: string | null; current: string | null }[];
+  from: { name: string; started_at?: string; preset?: string };
+  to: { name: string; started_at?: string; preset?: string };
+}
+export interface WebSecGuide { id: string; title: string; checks: string[]; points: string[]; refs: string[] }
+export interface WebSecGuides { guides: WebSecGuide[]; byCheck: Record<string, string> }
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -1033,7 +1052,7 @@ export const api = {
   webAddInjection: (name: string, code: string) => post<{ ok: boolean; injection: WebInjection }>("/api/web/injections", { name, code }),
   webDeleteInjection: (id: string) => call<{ ok: boolean; removed: boolean }>(`/api/web/injections/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-OSLab": "1" } }),
   websecStatus: () => call<WebSecStatus>("/api/websec/status"),
-  websecModules: () => call<{ modules: WebSecModule[] }>("/api/websec/modules"),
+  websecModules: () => call<{ modules: WebSecModule[]; presets?: Record<string, string[]> }>("/api/websec/modules"),
   websecStart: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean; cveLookup?: boolean; timeout?: number; deadline?: number }) =>
     post<WebSecJob>("/api/websec/scans", request),
   websecJob: (id: string) => call<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
@@ -1045,6 +1064,12 @@ export const api = {
     call<{ entries: WebSecHistoryEntry[] }>(`/api/websec/history?limit=20${target ? `&target=${encodeURIComponent(target)}` : ""}`),
   websecReports: (target: string) =>
     call<{ reports: WebSecReportFile[] }>(`/api/websec/reports?target=${encodeURIComponent(target)}`),
+  websecPreferences: () => call<WebSecPreferencesPayload>("/api/websec/preferences"),
+  websecSavePreferences: (preferences: WebSecPreferences) =>
+    post<WebSecPreferencesPayload>("/api/websec/preferences", preferences),
+  websecCompare: (target: string, oldName: string, newName: string) =>
+    call<WebSecCompare>(`/api/websec/compare?target=${encodeURIComponent(target)}&old=${encodeURIComponent(oldName)}&new=${encodeURIComponent(newName)}`),
+  websecGuides: () => call<WebSecGuides>("/api/websec/guides"),
   websecReport: (target: string, name: string, format: string) =>
     call<{ content: string; format: string; name: string }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
   upload: async (file: File) => {

@@ -35,7 +35,6 @@ import mcp_cleanup  # noqa: E402
 import mcp_websec  # noqa: E402
 import winapps  # noqa: E402
 import winapps_guard  # noqa: E402
-import winapps_input_gate  # noqa: E402
 
 REPO_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 PROTOCOL_VERSION = "2024-11-05"
@@ -347,12 +346,14 @@ def win_tool_call(name: str, args: dict) -> dict:
         return {"content": [{"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"}]}
     if name == "winapps_capabilities":
         summary = winapps_guard.policy_summary(REPO_ROOT)
-        gate = winapps_input_gate.state()  # the owner is deliberately not part of what an agent sees
         winapps_guard.audit(REPO_ROOT, "capabilities", audience="agent", tool=name)
         return _text({"allowedApps": summary["allowedApps"], "restrictedApps": summary["restrictedApps"],
                       "restrictedTitles": summary["restrictedTitles"], "policyError": summary["policyError"],
                       "exists": summary["exists"], "audience": "agent", "inputSupported": False,
-                      "inputGate": {key: gate[key] for key in ("armed", "expiresInSec", "epoch")}})
+                      # The arm state lives in the HTTP console's process; this one would only see its
+                      # own (always disarmed) copy, so only the fixed rules are reported, never an owner.
+                      "inputGate": {"armedIn": "console", "allowlistRequired": True,
+                                    "confirmForSubmit": True, "agentCanArm": False}})
     if name == "winapps_doctor":
         return _text(winapps_guard.doctor(REPO_ROOT, "agent", tool=name))
     if name == "winapps_audit":

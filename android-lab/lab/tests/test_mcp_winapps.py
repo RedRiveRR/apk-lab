@@ -101,7 +101,8 @@ def test_winapps_capabilities_reports_policy_summary_and_input_unsupported(on_wi
     result = call("winapps_capabilities")
     assert payload(result) == {"allowedApps": 2, "restrictedApps": 1, "restrictedTitles": 0, "policyError": None,
                                "exists": True, "audience": "agent", "inputSupported": False,
-                               "inputGate": {"armed": False, "expiresInSec": 0, "epoch": 0}}
+                               "inputGate": {"armedIn": "console", "allowlistRequired": True,
+                                             "confirmForSubmit": True, "agentCanArm": False}}
     assert "Notepad" not in result["content"][0]["text"]
 
 
@@ -165,7 +166,9 @@ def test_winapps_audit_tool_shows_agent_rows_without_restricted_identities(on_wi
     winapps_guard.audit(None, "refused", audience="agent", app="1Password", window_id=3, code="RESTRICTED_WINDOW")
     winapps_guard.audit(None, "refused", audience="human", app="msedge", window_id=4, code="RESTRICTED_WINDOW")
     rows = payload(call("winapps_audit"))["rows"]
-    assert [(row["audience"], row["app"]) for row in rows][:1] == [("agent", None)]
+    assert all(row["audience"] == "agent" for row in rows)  # no human row, redacted or not
+    assert [(row["kind"], row["app"], row["code"]) for row in rows] == [
+        ("refused", None, "RESTRICTED_WINDOW"), ("audit", None, None)]
     assert "msedge" not in json.dumps(rows) and "1Password" not in json.dumps(rows)
     winapps_guard._reset_audit()
 
@@ -206,18 +209,16 @@ def test_macos_tools_also_read_the_spec_key(monkeypatch):
     assert result["isError"] is False and seen == {"w": 3, "q": "Save"}
 
 
-def test_capabilities_report_the_input_gate_without_naming_its_owner(on_windows, monkeypatch, tmp_path):
+def test_capabilities_report_the_input_gate_rules_but_never_a_live_state_or_owner(on_windows, monkeypatch, tmp_path):
     import winapps
 
     monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(tmp_path / "absent.json"))
     monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
     now = winapps.time.monotonic()
     monkeypatch.setattr(winapps, "_CONTROL_STATE", {"armed": True, "armedAt": now, "owner": "secret-owner"})
-    monkeypatch.setattr(winapps, "_WINAPPS_STREAM_EPOCH", 0)
-    monkeypatch.setattr(winapps, "desktop_locked", lambda: False)
     result = payload(call("winapps_capabilities"))
     assert result["inputSupported"] is False
-    gate = result["inputGate"]
-    assert gate["armed"] is True and gate["epoch"] == 0
-    assert winapps.CONTROL_TIMEOUT_SECONDS - 5 <= gate["expiresInSec"] <= winapps.CONTROL_TIMEOUT_SECONDS
+    # This process's copy of the lock is not the console's, so no armed/expiry/epoch is reported.
+    assert result["inputGate"] == {"armedIn": "console", "allowlistRequired": True,
+                                   "confirmForSubmit": True, "agentCanArm": False}
     assert "secret-owner" not in json.dumps(result)

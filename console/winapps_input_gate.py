@@ -28,6 +28,8 @@ reach the local HTTP address with the X-OSLab header can arm it.
 
 from __future__ import annotations
 
+import threading
+
 import winapps
 import winapps_guard as guard
 
@@ -35,6 +37,8 @@ import winapps_guard as guard
 INPUT_KINDS = frozenset({"click", "double_click", "right_click", "scroll", "type", "key", "paste",
                          "double-click", "right-click"})
 _SUBMIT_KEYS = frozenset({"enter", "return"})  # a paste or Enter can submit or overwrite
+# One transition at a time, each with its audit row, so the audit order is the transition order.
+_TRANSITION = threading.Lock()
 
 
 def _refuse(root: str, audience: str, code: str, message: str, *, window: dict | None = None,
@@ -58,38 +62,42 @@ def _control_error(root: str, error: "winapps.WinAppError") -> guard.GuardError:
 
 def arm(root: str, owner: object) -> dict:
     """Arm the control lock for one owner; the lock's own timeout applies. Returns the control state."""
-    try:
-        result = winapps.winapps_control_arm(True, owner if isinstance(owner, str) else None)
-    except winapps.WinAppError as error:
-        raise _control_error(root, error) from None
-    guard.audit(root, "arm", audience="human")  # the owner name is deliberately not recorded
+    with _TRANSITION:
+        try:
+            result = winapps.winapps_control_arm(True, owner if isinstance(owner, str) else None)
+        except winapps.WinAppError as error:
+            raise _control_error(root, error) from None
+        guard.audit(root, "arm", audience="human")  # the owner name is deliberately not recorded
     return {**result, "gate": state()}
 
 
 def disarm(root: str, owner: object = None) -> dict:
-    """Disarm; only the current owner may (the panic stop needs no owner)."""
-    try:
-        result = winapps.winapps_control_arm(False, owner if isinstance(owner, str) else None)
-    except winapps.WinAppError as error:
-        raise _control_error(root, error) from None
-    guard.audit(root, "disarm", audience="human")
+    """Disarm; only the current owner may: a missing or other owner gets INPUT_BUSY while armed
+    (the panic stop is the only ownerless way to stop)."""
+    with _TRANSITION:
+        try:
+            result = winapps.winapps_control_arm(False, owner if isinstance(owner, str) else None)
+        except winapps.WinAppError as error:
+            raise _control_error(root, error) from None
+        guard.audit(root, "disarm", audience="human")
     return {**result, "gate": state()}
 
 
 def panic_stop(root: str) -> dict:
     """Disarm whoever holds control and end every running mirror stream at once."""
-    result = winapps.winapps_panic_stop()
-    guard.audit(root, "panic-stop", audience="human")
+    with _TRANSITION:
+        result = winapps.winapps_panic_stop()
+        guard.audit(root, "panic-stop", audience="human")
     return {**result, "gate": state()}
 
 
 def authorize(root: str, window_id: object, kind: object, *, confirm: object = False,
               key: object = None, audience: str = "human") -> dict:
     """The window (read fresh) when this input action may run; raises GuardError otherwise."""
-    guard.require_audience(audience)
+    guard.require_audience(audience)  # a programming error (callers pass a constant), like the guard's
     if winapps.sys.platform != "win32":
-        raise guard.GuardError("The Windows app mirror needs a Windows host", "NOT_SUPPORTED")
-    if kind not in INPUT_KINDS or (kind == "key" and not (isinstance(key, str) and key.strip())):
+        raise _refuse(root, audience, "NOT_SUPPORTED", "The Windows app mirror needs a Windows host")
+    if not isinstance(kind, str) or kind not in INPUT_KINDS or (kind == "key" and not (isinstance(key, str) and key.strip())):
         raise _refuse(root, audience, "INVALID_INPUT", "Unknown input kind, or a key action without a key")
     try:
         hwnd = guard.parse_window_id(window_id)

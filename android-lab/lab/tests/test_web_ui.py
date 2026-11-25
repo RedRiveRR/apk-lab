@@ -138,10 +138,17 @@ def test_winapps_endpoint_serves_the_read_only_inventory(web_server, monkeypatch
     import web_ui
 
     _no_policy(monkeypatch, tmp_path)
-    fixture = {"available": True, "windows": [], "reason": None}
+    fixture = {"available": True, "reason": None, "windows": [
+        {"windowId": 1, "app": "Notepad", "title": "notes.txt", "width": 10, "height": 10},
+        {"windowId": 3, "app": "1Password", "title": "Vault: bank", "width": 10, "height": 10}]}
     monkeypatch.setattr(web_ui.winapps_guard.winapps, "winapps_windows", lambda: fixture)
-    data = json.loads(urllib.request.urlopen(f"{web_server}/api/labs/winapps/apps").read().decode("utf-8"))
-    assert data == fixture
+    raw = urllib.request.urlopen(f"{web_server}/api/labs/winapps/apps").read().decode("utf-8")
+    data = json.loads(raw)
+    by_id = {window["windowId"]: window for window in data["windows"]}
+    # Served through the guard: the restricted window is flagged and its title never leaves.
+    assert by_id[1]["restricted"] is False and by_id[1]["title"] == "notes.txt"
+    assert by_id[3]["restricted"] is True and by_id[3]["title"] == "(restricted)"
+    assert "Vault: bank" not in raw
 
 
 def test_winapps_endpoints_are_501_without_the_guard_module(web_server, monkeypatch):

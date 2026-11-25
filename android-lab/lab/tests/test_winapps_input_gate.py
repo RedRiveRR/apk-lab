@@ -226,6 +226,21 @@ def test_an_unknown_audience_is_refused(desk):
     assert refused_code(lambda: gate.authorize(desk["root"], 1, "click", audience="Agent")) == "INVALID_AUDIENCE"
 
 
-def test_off_windows_authorize_says_not_supported(desk, monkeypatch):
+def test_off_windows_authorize_says_not_supported_and_is_audited(desk, monkeypatch):
     monkeypatch.setattr(winapps.sys, "platform", "linux")
     assert refused_code(lambda: gate.authorize(desk["root"], 1, "click")) == "NOT_SUPPORTED"
+    assert ("refused", "NOT_SUPPORTED") in audit_kinds()
+
+
+@pytest.mark.parametrize("kind", [["click"], {"k": 1}, 7, b"click"])
+def test_a_non_string_kind_is_refused_and_audited_not_a_crash(desk, kind):
+    armed(desk)
+    assert refused_code(lambda: gate.authorize(desk["root"], 1, kind)) == "INVALID_INPUT"
+    assert ("refused", "INVALID_INPUT") in audit_kinds()
+
+
+@pytest.mark.parametrize("owner", [None, "agent-9"])
+def test_a_disarm_without_the_owner_cannot_stop_another_session(desk, owner):
+    armed(desk, "panel-1")
+    assert refused_code(lambda: gate.disarm(desk["root"], owner)) == "INPUT_BUSY"
+    assert winapps.winapps_control_state()["armed"] is True

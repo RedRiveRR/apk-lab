@@ -87,14 +87,19 @@ captured for anyone and are marked restricted in the panel. Restricted beats the
 allowlist, and the built-in restrictions cannot be removed. A capture is checked
 before and after the pixels are taken, against the policy as it is at that moment,
 because a title or the policy file can change meanwhile. The doctor probe goes
-through the same check. Unknown keys in the policy file are an error, and an
-invalid allowlist still keeps the restrictions that did parse. An agent capture
-is capped at 4K and every capture has a 15 second deadline, so a huge or hung
-window cannot exhaust memory or stall the MCP server.
+through the same check. Unknown keys, an unreadable file or invalid JSON are a
+policy error, and a broken policy restricts every window for everyone (reason
+`policy-error`) until it is fixed, because it may have lost a restriction it meant to
+add. An agent capture is capped at 4K, checked again on the captured PNG's own size,
+and every capture has a 15 second deadline; at most two timed-out captures may still be
+running before new ones get `CAPTURE_BUSY`, so a huge or hung window cannot exhaust
+memory or stall the MCP server.
 
 Every agent call and every refusal is audited without titles or images, in memory
-and in a daily JSONL file (capped at 10,000 rows per process and day); identical
-consecutive rows within a minute are counted, not repeated. The agent's own view of
+and in a daily JSONL file (capped at 10,000 rows per process and day, the count starting
+again each day; after a failed write that day's file gets no more rows, so a half-written
+line is never followed by another); identical rows (including the tool) within a minute
+are counted, not repeated. The agent's own view of
 the audit hides other audiences' rows and the app name of any refusal.
 The MCP server adds read-only `winapps_*` tools on Windows and no arm or input tool.
 The console's UI Automation, search, stream, click and input routes call
@@ -119,7 +124,8 @@ lock's owner and confirmation under its own mutex, so a disarm or panic stop tha
 while the gate runs still stops the action. Every refusal and every authorization is
 audited without titles or the owner's name. `GET /api/labs/winapps/input` shows the gate
 state; `POST .../input/arm`, `.../disarm` and `.../panic` need the `X-OSLab` header. There
-is no arm tool on MCP, and `winapps_capabilities` reports the gate without its owner.
+is no arm tool on MCP, and `winapps_capabilities` reports only the gate's fixed rules:
+the arm state lives in the console's process, so the MCP server never reports a copy of it.
 
 Honest limits: the filter reads process names and titles only, so it is a
 heuristic. The allowlist binds the MCP path; the local HTTP address serves the

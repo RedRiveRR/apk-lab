@@ -113,8 +113,8 @@ For locations, the state of the branch and the continuation checklist, read
    findings UI, MCP summaries; old reports are labelled on read.
 3. **Monitor and notifications** (`monitor.py`, `utils/notify.py`): recurring scans
    of in-scope targets, alert on a regression; MCP tools for its config.
-4. **Content scan depth**: the wider pattern registry, entropy scoring and a static
-   DOM-XSS source→sink pass over served scripts (all passive).
+4. ~~Content scan depth~~ — done: 25 patterns with an entropy floor and a static
+   DOM-XSS source→sink pass (`checks/taint.py`), all passive.
 5. ~~Report cover, target lists, concurrency~~ — done: `--client/--author/--title` on
    `scan` and `report`, `bulk -` reads stdin, `bulk --concurrency 1-8`.
 6. Decide on WebAnalyzer's Overview / Threat-intel / Network-map pages: port an

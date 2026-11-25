@@ -20,6 +20,7 @@ implementation's internals.
 | WebAnalyzer `modules/registry.py` | `websec/registry.py` | same decorator/registry idea; ids are stable snake_case, labels are display text |
 | WebAnalyzer plugins | `websec/plugins/` | same contract: `@module(...)`, one file per plugin, `WEBSEC_PLUGIN_DIRS` |
 | WebAnalyzer `utils/formats.py` | `websec/report.py` | SARIF rule ids are `WEBSEC/…`, not `WA/…` |
+| WebAnalyzer `advanced_content_scanner.py` `PatternRegistry`, `TaintFlowTracker` | `checks/common.py` `SECRET_PATTERNS`, `checks/taint.py` | patterns carry a Shannon-entropy floor and mask only the captured secret; taint runs over the scripts the page already references, never on guessed paths |
 | WebAnalyzer `utils/taxonomy.py` | `websec/taxonomy.py` | same conservative CWE / OWASP 2021 table, plus a per-check fallback |
 | WebAnalyzer `cli.py` `--fail-on`, `--baseline`, `--summary`, `diff --fail-on-new`, `--client/--author/--title` | `websec/cli.py` | the gate exits `4` (1 is a scope refusal here); the baseline may be a stored report name |
 | WebAnalyzer `action.yml` | `web-sec/action.yml` | one target per step, and the scope file is a required input |

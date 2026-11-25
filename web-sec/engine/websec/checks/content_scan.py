@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from ..models import Finding
 from ..registry import module
 from .common import find_secrets, parse_html, same_host
+from .taint import find_taint_chains
 
 SOURCE_MAP = re.compile(r"[#@]\s*sourceMappingURL=([^\s*/][^\s]*)", re.I)
 _IMPORT = re.compile(r"""(?:\bimport\b[^;()]{0,200}?from\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["']([^"']{2,200})["']""")
@@ -50,7 +51,7 @@ def _imports(text: str) -> List[str]:
 
 
 @module("content_scan", label="Content and secret exposure",
-        description="Secret patterns in served HTML and scripts, source maps, framework data blobs",
+        description="Secret patterns (with an entropy floor) and DOM-XSS source-to-sink candidates in served HTML and scripts, source maps, framework data blobs",
         group="security", weight="heavy", order=70, upstream="Advanced Content Scan")
 def content_scan(ctx):
     root = ctx.page("/")
@@ -87,6 +88,12 @@ def content_scan(ctx):
         queue = follow
         depth += 1
     secrets = _scan(blobs)
+    taint = []
+    for where, text in blobs.items():
+        for chain in find_taint_chains(text):
+            taint.append({"where": where, **chain})
+            if len(taint) >= 10:
+                break
     maps = sorted({match.group(1).strip("\"'").split("?")[0]
                    for text in blobs.values() for match in SOURCE_MAP.finditer(text)})[:10]
     exposed_maps = []
@@ -104,6 +111,7 @@ def content_scan(ctx):
         "secrets": [{"kind": entry["kind"], "severity": entry["severity"], "count": entry["count"],
                      "samples": entry["samples"], "where": entry["where"]}
                     for entry in secrets.values()],
+        "taint": taint,
         "source_maps": maps,
         "exposed_source_maps": exposed_maps,
         "framework_data": {"next_data": next_data},
@@ -116,6 +124,17 @@ def content_scan(ctx):
             detail=f"{entry['count']} occurrence(s) in {', '.join(entry['where'])}.",
             evidence=", ".join(str(sample) for sample in entry["samples"]),
             remediation=str(entry["remediation"])))
+    for chain in taint[:5]:
+        findings.append(Finding(
+            module="content_scan", kind="dom-taint", severity="medium",
+            title=f"A URL or storage value may reach {chain['sink']} (DOM-XSS candidate)",
+            detail=(f"In {chain['where']}, {chain['variable']} is read from a user-controlled source on line "
+                    f"{chain['source_line']} and used in {chain['sink']} on line {chain['line']}. "
+                    "This is a static match, not a confirmed bug."),
+            evidence=str(chain["code"]),
+            remediation="Write untrusted values with textContent or a sanitizer such as DOMPurify; "
+                        "never pass them to innerHTML, document.write or eval.",
+            refs=("https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html",)))
     if exposed_maps:
         findings.append(Finding(
             module="content_scan", kind="source-maps", severity="medium",

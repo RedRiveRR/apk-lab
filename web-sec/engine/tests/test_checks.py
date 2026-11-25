@@ -150,7 +150,7 @@ def test_content_scan_masks_a_secret_and_reports_one_finding_per_kind():
             "<script src='/app.js'></script></html>")
     ctx = make_context(http=FakeHttp({
         f"https://{ZONE}/": page(body),
-        f"https://{ZONE}/app.js": page("var t='ghp_" + "a" * 36 + "';"),
+        f"https://{ZONE}/app.js": page("var t='ghp_" + "Zq7Kp2Lm9Xw4Rt8Vb1Nc6Hd3Js5Fg0Ya2Qe" + "';"),
     }))
     data, findings = _call("content_scan", ctx)
     kinds = {entry["kind"] for entry in data["secrets"]}
@@ -321,3 +321,46 @@ def test_origin_exposure_recognises_cdn_ranges():
     assert _cdn_for_address("104.16.132.229") == "Cloudflare"
     assert _cdn_for_address("151.101.1.140") == "Fastly"
     assert _cdn_for_address("203.0.113.7") == ""
+
+
+def test_secret_registry_ignores_placeholders_and_finds_modern_keys():
+    from websec.checks.common import find_secrets
+    text = ("const a='ghp_" + "a" * 36 + "'; const apiKey = 'your-api-key-goes-here-xxxxxxxx';"
+            " const db='postgres://app:" + "S3cr3tPw" + "@db.internal:5432/app';"
+            " const hf='hf_" + "Qw8Er7Ty6Ui5Op4As3Df2Gh1Jk0LzXcVbN" + "';"
+            " config.secret_key = '" + "q8Zr2Lx7Vm4Nc1Bt6Hy3Ju9Ki0Ol5Pw" + "';")
+    kinds = {hit["kind"]: hit for hit in find_secrets(text)}
+    assert "GitHub token" not in kinds                      # low-entropy placeholder
+    assert "High-entropy secret assignment" in kinds        # the real-looking one
+    assert all("your-api-key" not in hit["value"] for hit in kinds.values())
+    assert kinds["Database URL with a password"]["value"] == "S3…"
+    assert "S3cr3tPw" not in kinds["Database URL with a password"]["value"]
+    assert "Hugging Face token" in kinds
+
+
+def test_taint_pass_reports_a_source_reaching_a_sink_and_skips_noise():
+    from websec.checks.taint import find_taint_chains
+    script = "\n".join([
+        "const query = decodeURIComponent(location.hash.slice(1));",
+        "const safe = 'static';",
+        "document.getElementById('out').innerHTML = '<b>' + query + '</b>';",
+        "el.innerHTML = safe;",
+        "var e = location.search; x.innerHTML = e;",       # one-letter minified noise
+        "box.textContent = query;",
+    ])
+    chains = find_taint_chains(script)
+    assert [(chain["variable"], chain["sink"], chain["line"], chain["source_line"]) for chain in chains] == \
+        [("query", "innerHTML", 3, 1)]
+    assert find_taint_chains("el.innerHTML = name;") == []
+
+
+def test_content_scan_reports_a_dom_xss_candidate():
+    script = "const term = new URLSearchParams(location.search).get('q');\nresults.innerHTML = term;\n"
+    ctx = make_context(http=FakeHttp({
+        f"https://{ZONE}/": page("<html><script src='/search.js'></script></html>"),
+        f"https://{ZONE}/search.js": page(script),
+    }))
+    data, findings = _call("content_scan", ctx)
+    assert data["taint"][0]["variable"] == "term"
+    finding = next(f for f in findings if f.kind == "dom-taint")
+    assert finding.severity == "medium" and "innerHTML" in finding.title

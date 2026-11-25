@@ -19,7 +19,7 @@ Groups: `recon` (what the site is), `security` (how it is configured), `posture`
 | `contact_spy` | recon | passive | bounded same-host crawl for emails, phones and social profiles | Contact Spy |
 | `subdomain_discovery` | recon | passive | certificate-transparency names from crt.sh; flags staging/dev/admin | Subdomain Discovery |
 | `security_analysis` | security | passive | header grade A+–F, TLS version and expiry, cookie flags, CORS, WAF hints | Security Analysis |
-| `content_scan` | security | passive | secret patterns in served HTML/JS, source-map exposure, framework data | Advanced Content Scan |
+| `content_scan` | security | passive | 25 secret patterns with an entropy floor (cloud, AI, VCS, payment, database URLs, generic high-entropy assignments), DOM-XSS source→sink candidates, source-map exposure, framework data | Advanced Content Scan |
 | `archive_spy` | security | passive | Wayback CDX URLs whose names suggest config, backups or secrets | Web Archive Spy |
 | `ssl_san` | security | passive | certificate SANs, wildcards, names outside the domain | SSL SAN Association |
 | `subdomain_takeover` | security | passive | dangling CNAMEs against a 36-service fingerprint table | Subdomain Takeover |

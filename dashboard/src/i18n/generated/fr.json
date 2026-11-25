@@ -3227,5 +3227,7 @@
   "Clear all history": "Effacer tout l’historique",
   "Delete the selected runs?": "Supprimer les exécutions sélectionnées ?",
   "Clear this target's history?": "Effacer l’historique de cette cible ?",
-  "Clear all history?": "Effacer tout l’historique ?"
+  "Clear all history?": "Effacer tout l’historique ?",
+  "PDF": "PDF",
+  "DOCX": "DOCX"
 }

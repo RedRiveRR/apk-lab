@@ -3227,5 +3227,7 @@
   "Clear all history": "امسح السجل كله",
   "Delete the selected runs?": "حذف التشغيلات المحددة؟",
   "Clear this target's history?": "مسح سجل هذا الهدف؟",
-  "Clear all history?": "مسح السجل كله؟"
+  "Clear all history?": "مسح السجل كله؟",
+  "PDF": "PDF",
+  "DOCX": "DOCX"
 }

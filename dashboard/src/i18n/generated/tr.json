@@ -3227,5 +3227,7 @@
   "Clear all history": "Tüm geçmişi temizle",
   "Delete the selected runs?": "Seçili çalıştırmalar silinsin mi?",
   "Clear this target's history?": "Bu hedefin geçmişi temizlensin mi?",
-  "Clear all history?": "Tüm geçmiş temizlensin mi?"
+  "Clear all history?": "Tüm geçmiş temizlensin mi?",
+  "PDF": "PDF",
+  "DOCX": "DOCX"
 }

@@ -1097,7 +1097,7 @@ export const api = {
   websecMonitorConfig: (config: WebSecMonitorConfig) => post<WebSecMonitorStatus>("/api/websec/monitor/config", { config }),
   websecMonitorRun: () => post<{ queued: boolean }>("/api/websec/monitor/run", {}),
   websecReport: (target: string, name: string, format: string) =>
-    call<{ content: string; format: string; name: string }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
+    call<{ content: string; format: string; name: string; encoding?: "base64" }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
   upload: async (file: File) => {
     const form = new FormData();
     form.append("apk", file);

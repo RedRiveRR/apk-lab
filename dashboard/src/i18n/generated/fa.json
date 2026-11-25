@@ -3227,5 +3227,7 @@
   "Clear all history": "پاک کردن کل تاریخچه",
   "Delete the selected runs?": "اجراهای انتخاب‌شده حذف شوند؟",
   "Clear this target's history?": "تاریخچهٔ این هدف پاک شود؟",
-  "Clear all history?": "کل تاریخچه پاک شود؟"
+  "Clear all history?": "کل تاریخچه پاک شود؟",
+  "PDF": "PDF",
+  "DOCX": "DOCX"
 }

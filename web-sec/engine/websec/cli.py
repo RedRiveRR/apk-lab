@@ -41,6 +41,22 @@ def _load_baseline(value: str, target: str) -> Dict[str, object]:
     return document
 
 
+def _emit_binary(data: bytes, out: str) -> int:
+    """PDF/DOCX go to --out, or to a binary stdout; never through the text writer."""
+    if out:
+        with open(out, "wb") as handle:
+            handle.write(data)
+        _error(f"wrote {out}")
+        return 0
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:
+        _error("pdf and docx need --out FILE here")
+        return 2
+    buffer.write(data)
+    buffer.flush()
+    return 0
+
+
 def _append_summary(path: str, text: str) -> None:
     # append: $GITHUB_STEP_SUMMARY is shared by every step of the job
     with open(path, "a", encoding="utf-8", newline="\n") as handle:
@@ -280,6 +296,16 @@ def scan(args) -> int:
         _error(f"gate: {len(gated)} finding(s) at or above {args.fail_on}")
     outcome = 1 if result.refused else EXIT_GATE if gated else 0
     fmt = "json" if args.json else args.format
+    if fmt in ("pdf", "docx"):
+        from .export import BINARY_FORMATS
+        paths = History().append(document) if options.keep_history else {}
+        target = args.out
+        if target and os.path.isdir(target):
+            target = os.path.join(target, f"{slug(options.target)}.{fmt}")
+        code = _emit_binary(BINARY_FORMATS[fmt](document), target)
+        if paths:
+            _error(f"history: {paths['history']}")
+        return code or outcome
     rendered = report_module.render(document, fmt)
     if options.keep_history:
         paths = History().append(document)
@@ -408,7 +434,17 @@ def report(args) -> int:
     cover = report_module.clean_cover({"client": args.client, "author": args.author, "title": args.title})
     if cover:
         document = {**document, "cover": {**(document.get("cover") or {}), **cover}}
-    _print(report_module.render(document, "json" if args.json else args.format))
+    fmt = "json" if args.json else args.format
+    if fmt in ("pdf", "docx"):
+        from .export import BINARY_FORMATS
+        return _emit_binary(BINARY_FORMATS[fmt](document), args.out)
+    rendered = report_module.render(document, fmt)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as handle:
+            handle.write(rendered)
+        _error(f"wrote {args.out}")
+        return 0
+    _print(rendered)
     return 0
 
 
@@ -664,7 +700,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--active", action="store_true", help="allow intrusive checks")
     p_scan.add_argument("--cve-lookup", action="store_true", help="query NVD for banners")
     p_scan.add_argument("--scheme", default="https", choices=("http", "https"))
-    p_scan.add_argument("--format", default="markdown", choices=("json", "sarif", "markdown", "text", "html"))
+    p_scan.add_argument("--format", default="markdown", choices=("json", "sarif", "markdown", "text", "html", "pdf", "docx"))
     p_scan.add_argument("--json", action="store_true", help="shortcut for --format json")
     p_scan.add_argument("--diff", default="",
                         help="compare against a stored report name of the same target")
@@ -702,8 +738,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument("--target", required=True)
     p_report.add_argument("--name", default="")
     p_report.add_argument("--list", action="store_true")
-    p_report.add_argument("--format", default="markdown", choices=("json", "sarif", "markdown", "text", "html"))
+    p_report.add_argument("--format", default="markdown", choices=("json", "sarif", "markdown", "text", "html", "pdf", "docx"))
     p_report.add_argument("--json", action="store_true")
+    p_report.add_argument("--out", default="", help="write to FILE (needed for pdf and docx without a binary stdout)")
     _cover_arguments(p_report)
     p_report.set_defaults(func=report)
 

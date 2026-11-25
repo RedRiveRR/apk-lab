@@ -39,7 +39,9 @@ No exploitation payloads, brute force or RCE probes were ported.
 [[web-sec/engine/websec/report.py#to_sarif]] emits SARIF 2.1.0 with `WEBSEC/<module>/<kind>` rule ids (the stable kind each check declares, title slug as fallback) and the usual severity mapping.
 
 [[web-sec/engine/websec/report.py#to_markdown]] and `to_html` are pure functions of
-the same document. [[web-sec/engine/websec/grade.py]] turns findings into the
+the same document. [[web-sec/engine/websec/export.py]] adds PDF (standard fonts,
+Latin-1, marked when glyphs are lost) and DOCX from the same outline, standard
+library only. [[web-sec/engine/websec/grade.py]] turns findings into the
 `A+ … F` grade, capped per module so one noisy check cannot dominate.
 [[web-sec/knowledge/report-schema.md]] documents every field.
 [[web-sec/engine/websec/history.py#History]] keeps a bounded JSONL summary (each entry

@@ -6,6 +6,7 @@ request is typed; an unknown route, field or report name fails explicitly.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -24,6 +25,7 @@ TARGET = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,252}$", re.ASCII)
 MODULE_ID = re.compile(r"^[a-z][a-z0-9_]{0,47}$", re.ASCII)
 REPORT_NAME = re.compile(r"^[0-9A-Za-z._-]{1,120}\.json$", re.ASCII)
 FORMATS = {"json", "sarif", "markdown", "md", "text", "html"}
+BINARY_FORMATS = {"pdf", "docx"}
 PRESETS = {"quick", "standard", "full"}
 PAYLOAD_KEYS = {"target", "preset", "modules", "active", "cveLookup", "scheme", "timeout", "deadline"}
 MAX_MODULES = 40
@@ -642,6 +644,32 @@ class WebSecAPI:
         self.monitor.tick_once()
         return {"queued": False, "lastTick": self.monitor.last}
 
+    def binary_report(self, target: str, name: str, fmt: str) -> str:
+        """A stored report as PDF or DOCX, base64 for the JSON response; the temp file is removed."""
+        if not isinstance(target, str) or not TARGET.match(target):
+            raise WebSecError(400, "Invalid target")
+        if not isinstance(name, str) or not REPORT_NAME.match(name):
+            raise WebSecError(400, "Invalid report name")
+        if fmt not in BINARY_FORMATS:
+            raise WebSecError(400, "format must be pdf or docx")
+        folder = self.storage / "exports"
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        out = folder / f"{uuid.uuid4().hex}.{fmt}"
+        try:
+            result = self._run(["report", "--target", target, "--name", name, "--format", fmt, "--out", str(out)],
+                               timeout=30)
+            if result.returncode != 0 or not out.is_file():
+                message = (result.stderr or result.stdout or "the export failed").strip()
+                raise WebSecError(404, message.splitlines()[-1][:500])
+            if out.stat().st_size > MAX_OUTPUT:
+                raise WebSecError(502, "The export is larger than the console accepts")
+            return base64.b64encode(out.read_bytes()).decode("ascii")
+        finally:
+            try:
+                out.unlink()
+            except OSError:
+                pass
+
     # ── routing ──────────────────────────────────────────────────────────────
 
     def get(self, path: str, query: dict) -> dict:
@@ -683,6 +711,9 @@ class WebSecAPI:
             target = (query.get("target") or [""])[0]
             name = (query.get("name") or [""])[0]
             fmt = (query.get("format") or ["json"])[0]
+            if fmt in BINARY_FORMATS:
+                return {"content": self.binary_report(target, name, fmt), "encoding": "base64",
+                        "format": fmt, "name": name}
             return {"content": self.report(target, name, fmt), "format": fmt, "name": name}
         raise WebSecError(404, f"Unknown Web Sec Lab route: {path}")
 

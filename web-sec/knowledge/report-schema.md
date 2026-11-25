@@ -97,6 +97,15 @@ they are read.
 - A classified rule is tagged `external/cwe/cwe-<n>` and `owasp/A0x:2021`, and its
   results carry `cwe` and `owasp` properties, so code scanning groups them by CWE.
 
+## PDF and DOCX
+
+`--format pdf|docx` (on `scan` and `report`, written with `--out`) renders the same
+outline as the Markdown report: cover, summary, findings with CWE/OWASP, fix, and
+the check table. DOCX is a minimal WordprocessingML package that stays editable. The
+PDF uses the 14 standard fonts, which cover Latin-1 only: other characters are
+replaced with `?` and the page says so; the HTML export keeps every script. The
+console returns both as base64 in `/api/websec/report?format=pdf|docx`.
+
 ## CI gates and exit codes
 
 `scan`: `0` clean, `1` refused by the scope, `2` usage error, `4` a finding at or

@@ -3227,5 +3227,7 @@
   "Clear all history": "Gesamten Verlauf löschen",
   "Delete the selected runs?": "Ausgewählte Läufe löschen?",
   "Clear this target's history?": "Verlauf dieses Ziels löschen?",
-  "Clear all history?": "Gesamten Verlauf löschen?"
+  "Clear all history?": "Gesamten Verlauf löschen?",
+  "PDF": "PDF",
+  "DOCX": "DOCX"
 }

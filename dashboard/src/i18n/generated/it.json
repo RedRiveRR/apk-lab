@@ -3227,5 +3227,7 @@
   "Clear all history": "Cancella tutta la cronologia",
   "Delete the selected runs?": "Eliminare le esecuzioni selezionate?",
   "Clear this target's history?": "Cancellare la cronologia di questo obiettivo?",
-  "Clear all history?": "Cancellare tutta la cronologia?"
+  "Clear all history?": "Cancellare tutta la cronologia?",
+  "PDF": "PDF",
+  "DOCX": "DOCX"
 }

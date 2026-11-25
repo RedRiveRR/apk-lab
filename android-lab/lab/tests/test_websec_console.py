@@ -387,3 +387,18 @@ def test_monitor_ticks_never_overlap_a_scan(tmp_path, monkeypatch):
     with pytest.raises(websec_api.WebSecError) as busy:
         api.start_scan({"target": "example.test"})
     assert busy.value.status == 409 and "monitor" in str(busy.value)
+
+
+def test_reports_export_as_pdf_and_docx(tmp_path, monkeypatch):
+    import base64
+    api = _engine_api(tmp_path, monkeypatch)
+    _store_report(tmp_path, "20261124T000000Z-96.json", 96, "A+", [])
+    for fmt, magic in (("pdf", b"%PDF"), ("docx", b"PK")):
+        payload = api.get("/api/websec/report", {"target": ["localhost"], "name": ["20261124T000000Z-96.json"],
+                                                 "format": [fmt]})
+        assert payload["encoding"] == "base64"
+        assert base64.b64decode(payload["content"]).startswith(magic)
+    assert list((tmp_path / "storage" / "exports").iterdir()) == []  # temp files are removed
+    with pytest.raises(websec_api.WebSecError) as missing:
+        api.get("/api/websec/report", {"target": ["localhost"], "name": ["20200101T000000Z-1.json"], "format": ["pdf"]})
+    assert missing.value.status == 404

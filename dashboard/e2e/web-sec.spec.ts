@@ -234,7 +234,9 @@ test("stored reports download in every format with the right file name", async (
   await page.route("**/api/websec/report?*", (route) => {
     const format = new URL(route.request().url()).searchParams.get("format") ?? "";
     formats.push(format);
-    return route.fulfill({ json: { content: `content-${format}`, format, name: "20261124T000000Z-95.json" } });
+    const binary = format === "pdf" || format === "docx";
+    return route.fulfill({ json: { content: binary ? Buffer.from(`%${format}`).toString("base64") : `content-${format}`,
+      format, name: "20261124T000000Z-95.json", ...(binary ? { encoding: "base64" } : {}) } });
   });
 
   await page.goto("/web-sec/");
@@ -246,14 +248,16 @@ test("stored reports download in every format with the right file name", async (
     ["JSON", "json"],
     ["SARIF", "sarif"],
     ["HTML", "html"],
-    ["Markdown", "md"]
+    ["Markdown", "md"],
+    ["PDF", "pdf"],
+    ["DOCX", "docx"]
   ] as const) {
     const pending = page.waitForEvent("download");
     await page.getByRole("main").getByRole("button", { name: button, exact: true }).click();
     const download = await pending;
     expect(download.suggestedFilename()).toBe(`example.test.20261124T000000Z-95.${extension}`);
   }
-  expect(formats).toEqual(["json", "sarif", "html", "markdown"]);
+  expect(formats).toEqual(["json", "sarif", "html", "markdown", "pdf", "docx"]);
 
   await page.getByRole("main").getByRole("button", { name: "Open" }).click();
   await expect(page.getByRole("main").getByText("content-markdown")).toBeVisible();

@@ -124,7 +124,8 @@ For locations, the state of the branch and the continuation checklist, read
 1. ~~Dedicated drill-down panels~~ — done for `contact_spy`, `subdomain_discovery`,
    `content_scan` (secrets and DOM-XSS candidates), `subdomain_takeover`,
    `origin_exposure` and `react_exposure`.
-2. PDF and DOCX export (or document printing the HTML report).
+2. ~~PDF and DOCX export~~ — done: `websec/export.py` (stdlib), `--format pdf|docx`, console
+   base64 download, workbench buttons. The PDF uses the standard fonts (Latin-1) and says so.
 3. ~~History management~~ — done: favourites (kept through pruning), delete one or
    several, clear a target or everything, statistics; CLI `runs`, console, MCP, UI.
 4. Reference pages (ports, headers, status codes, domains): fold into the guides or

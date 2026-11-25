@@ -57,9 +57,11 @@ const EXPORT_MIME: Record<string, string> = {
   json: "application/json",
   sarif: "application/json",
   html: "text/html",
-  markdown: "text/markdown"
+  markdown: "text/markdown",
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 };
-const EXPORT_EXTENSION: Record<string, string> = { json: "json", sarif: "sarif", html: "html", markdown: "md" };
+const EXPORT_EXTENSION: Record<string, string> = { json: "json", sarif: "sarif", html: "html", markdown: "md", pdf: "pdf", docx: "docx" };
 const BULK_MAX = 20; // matches console/websec_api.py MAX_BULK
 const PRESET_LABEL: Record<string, string> = { quick: "Quick", standard: "Standard", full: "Full" };
 const TARGET_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,252}$/; // matches the console and engine validators
@@ -602,7 +604,11 @@ export default function WebSecLabPage() {
       const value = await api.websecReport(reportTarget, name, format);
       const mime = EXPORT_MIME[format] ?? "application/octet-stream";
       const extension = EXPORT_EXTENSION[format] ?? format;
-      const blob = new Blob([value.content], { type: mime });
+      // PDF and DOCX arrive base64-encoded inside the JSON response
+      const body = value.encoding === "base64"
+        ? Uint8Array.from(atob(value.content), (char) => char.charCodeAt(0))
+        : value.content;
+      const blob = new Blob([body], { type: mime });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -972,6 +978,8 @@ export default function WebSecLabPage() {
                     <button type="button" className="iux-btn" data-variant="ghost" onClick={() => download(entry.name, "sarif")}>SARIF</button>
                     <button type="button" className="iux-btn" data-variant="ghost" onClick={() => download(entry.name, "html")}>HTML</button>
                     <button type="button" className="iux-btn" data-variant="ghost" onClick={() => download(entry.name, "markdown")}>Markdown</button>
+                    <button type="button" className="iux-btn" data-variant="ghost" onClick={() => download(entry.name, "pdf")}>PDF</button>
+                    <button type="button" className="iux-btn" data-variant="ghost" onClick={() => download(entry.name, "docx")}>DOCX</button>
                   </li>
                 ))}
               </ul>

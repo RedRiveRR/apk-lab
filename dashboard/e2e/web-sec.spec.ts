@@ -567,3 +567,45 @@ test("the monitor warns in a banner, links to compare, and saves its config", as
   await expect(row.getByText("The check started; results appear here when it finishes.")).toBeVisible();
   expect(ran).toBe(1);
 });
+
+test("content, takeover and origin checks get dedicated panels", async ({ page }) => {
+  await mockStatus(page, status);
+  await mockScan(page, {
+    ...report,
+    modules: [
+      { id: "content_scan", label: "Content and secret exposure", status: "ok", duration_ms: 50, findings: 2, error: "", note: "",
+        data: { available: true, scripts_scanned: 2, bytes_scanned: 4096,
+          secrets: [{ kind: "AWS access key id", severity: "critical", count: 1, samples: ["AKIA…MPLE"], where: ["app.js"] }],
+          taint: [{ where: "search.js", variable: "term", sink: "innerHTML", line: 2, source_line: 1, code: "results.innerHTML = term" }],
+          source_maps: [], exposed_source_maps: [], framework_data: { next_data: false } } },
+      { id: "subdomain_takeover", label: "Subdomain takeover", status: "ok", duration_ms: 40, findings: 1, error: "", note: "",
+        data: { candidates: 3, services: 12, confirmed: [], checked: [],
+          dangling: [{ name: "old.example.test", service: "GitHub Pages", chain: ["old.example.test", "gone.github.io"], evidence: "gone.github.io does not resolve" }] } },
+      { id: "origin_exposure", label: "Origin exposure", status: "ok", duration_ms: 30, findings: 1, error: "", note: "",
+        data: { cdn: "Cloudflare", note: "a candidate origin, not proof",
+          candidates: [{ name: "direct.example.test", addresses: ["203.0.113.7"], edge: "", status: 200 }],
+          exposed: [{ name: "direct.example.test" }] } }
+    ]
+  });
+  await page.goto("/web-sec/");
+  await page.getByRole("textbox", { name: "Target" }).fill("example.test");
+  await page.getByRole("main").getByRole("button", { name: "Scan", exact: true }).click();
+  await expect(page.getByRole("main").getByText("95/100")).toBeVisible();
+  await page.getByRole("main").locator("summary").filter({ hasText: /^Checks$/ }).click();
+
+  await page.getByRole("main").getByRole("button", { name: "Content and secret exposure" }).click();
+  const content = page.getByRole("region", { name: "Content and secret exposure details" });
+  await expect(content.getByText("AKIA…MPLE")).toBeVisible();
+  await expect(content.getByText("DOM-XSS candidates")).toBeVisible();
+  await expect(content.getByText("results.innerHTML = term")).toBeVisible();
+
+  await page.getByRole("main").getByRole("button", { name: "Subdomain takeover", exact: true }).click();
+  const takeover = page.getByRole("region", { name: "Subdomain takeover details" });
+  await expect(takeover.getByText("Dangling CNAMEs")).toBeVisible();
+  await expect(takeover.getByText("old.example.test → gone.github.io")).toBeVisible();
+
+  await page.getByRole("main").getByRole("button", { name: "Origin exposure", exact: true }).click();
+  const origin = page.getByRole("region", { name: "Origin exposure details" });
+  await expect(origin.getByText("Cloudflare")).toBeVisible();
+  await expect(origin.getByRole("cell", { name: "yes" })).toBeVisible();
+});

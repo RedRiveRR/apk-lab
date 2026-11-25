@@ -121,14 +121,16 @@ For locations, the state of the branch and the continuation checklist, read
 
 ### WebQ gaps
 
-1. Dedicated drill-down panels for `contact_spy`, `subdomain_discovery`,
-   `content_scan`, `subdomain_takeover` and `origin_exposure` (generic panel today).
+1. ~~Dedicated drill-down panels~~ — done for `contact_spy`, `subdomain_discovery`,
+   `content_scan` (secrets and DOM-XSS candidates), `subdomain_takeover`,
+   `origin_exposure` and `react_exposure`.
 2. PDF and DOCX export (or document printing the HTML report).
 3. History management: favourite, delete a run, delete several, clear all, global
    statistics.
 4. Reference pages (ports, headers, status codes, domains): fold into the guides or
    record the exclusion.
-5. React signatures view for `react_exposure`.
+5. ~~React signatures view~~ — excluded: it is the honeypot's exploit-signature
+   catalogue (see `knowledge/upstream.md`); `react_exposure` has its own panel.
 
 ### Documentation
 

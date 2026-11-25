@@ -3,7 +3,8 @@
  *
  * The engine report carries every module's own `data` object; these panels turn
  * the known families (WHOIS, DNS, certificate, headers/cookies, ports, SEO,
- * technologies) into tables and chips, and fall back to a generic renderer so a
+ * technologies, contacts, subdomains, content and secrets, takeover, origin,
+ * framework data) into tables and chips, and fall back to a generic renderer so a
  * module without a dedicated panel still gets one. Data is untyped engine JSON,
  * so every panel reads defensively.
  */
@@ -338,6 +339,153 @@ function GenericPanel({ data }: { data: Data }) {
   return <GenericEntries data={data} />;
 }
 
+const records = (value: unknown): Data[] =>
+  asList(value).filter((item): item is Data => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+
+function Note({ data }: { data: Data }) {
+  if (data.available !== false) return null;
+  return <Row label="Note" value={str(data.reason)} />;
+}
+
+function ContactPanel({ data }: { data: Data }) {
+  const { available, reason, pages_crawled, pages, emails, phones, socials, ...rest } = data;
+  return (
+    <div className="space-y-2">
+      <Note data={{ available, reason }} />
+      <Row label="Pages crawled" value={str(pages_crawled)} />
+      {records(emails).length ? (
+        <SubSection title="Email addresses">
+          <Table head={["Address", "Found on"]} rows={records(emails).map((item) => [str(item.address), str(item.found_on)])} />
+        </SubSection>
+      ) : null}
+      {records(phones).length ? (
+        <SubSection title="Phone numbers">
+          <Table head={["Number", "Found on"]} rows={records(phones).map((item) => [str(item.number), str(item.found_on)])} />
+        </SubSection>
+      ) : null}
+      {records(socials).length ? (
+        <SubSection title="Social profiles">
+          <Table head={["Network", "Link"]} rows={records(socials).map((item) => [str(item.network), str(item.url)])} />
+        </SubSection>
+      ) : null}
+      {asList(pages).length ? <Row label="Pages" value={<Chips values={asList(pages).map(str)} />} /> : null}
+      <GenericEntries data={rest} />
+    </div>
+  );
+}
+
+function SubdomainPanel({ data }: { data: Data }) {
+  const { available, reason, count, names, interesting, source, ...rest } = data;
+  const flagged = new Set(asList(interesting).map(str));
+  return (
+    <div className="space-y-2">
+      <Note data={{ available, reason }} />
+      <Row label="Names found" value={count === undefined ? "" : `${str(count)} · ${str(source)}`} />
+      {flagged.size ? <Row label="Worth a look" value={<Chips values={[...flagged]} />} /> : null}
+      {asList(names).length ? (
+        <SubSection title="Certificate-transparency names">
+          <div className="max-h-48 overflow-y-auto">
+            <Chips values={asList(names).map(str).filter((name) => !flagged.has(name))} />
+          </div>
+        </SubSection>
+      ) : null}
+      <GenericEntries data={rest} />
+    </div>
+  );
+}
+
+function ContentPanel({ data }: { data: Data }) {
+  const { available, reason, scripts_scanned, bytes_scanned, secrets, taint, source_maps, exposed_source_maps,
+          framework_data, ...rest } = data;
+  const framework = (framework_data && typeof framework_data === "object" ? framework_data : {}) as Data;
+  return (
+    <div className="space-y-2">
+      <Note data={{ available, reason }} />
+      <Row label="Scanned" value={scripts_scanned === undefined ? "" : `${str(scripts_scanned)} scripts · ${str(bytes_scanned)} bytes`} />
+      <SubSection title="Secrets (masked)">
+        {records(secrets).length ? (
+          <Table head={["Kind", "Severity", "Count", "Samples", "Where"]}
+            rows={records(secrets).map((item) => [str(item.kind), str(item.severity), str(item.count),
+              asList(item.samples).map(str).join(", "), asList(item.where).map(str).join(", ")])} />
+        ) : <p className="text-(--iux-muted-foreground)">None found</p>}
+      </SubSection>
+      {records(taint).length ? (
+        <SubSection title="DOM-XSS candidates">
+          <Table head={["Where", "Variable", "Sink", "Lines", "Code"]}
+            rows={records(taint).map((item) => [str(item.where), str(item.variable), str(item.sink),
+              `${str(item.source_line)} → ${str(item.line)}`, <code key="code" className="break-all">{str(item.code)}</code>])} />
+        </SubSection>
+      ) : null}
+      {asList(source_maps).length ? <Row label="Source maps referenced" value={<Chips values={asList(source_maps).map(str)} />} /> : null}
+      {asList(exposed_source_maps).length ? <Row label="Source maps readable" value={<Chips values={asList(exposed_source_maps).map(str)} />} /> : null}
+      {framework.next_data !== undefined ? <Row label="__NEXT_DATA__ blob" value={yesNo(framework.next_data)} /> : null}
+      <GenericEntries data={rest} />
+    </div>
+  );
+}
+
+function TakeoverPanel({ data }: { data: Data }) {
+  const { checked, dangling, confirmed, candidates, services, ...rest } = data;
+  const chain = (item: Data) => asList(item.chain).map(str).join(" → ");
+  return (
+    <div className="space-y-2">
+      <Row label="Names checked" value={candidates === undefined ? "" : `${str(candidates)} · ${str(services)} service fingerprints`} />
+      {records(confirmed).length ? (
+        <SubSection title="Takeover page matched">
+          <Table head={["Name", "Service", "CNAME chain", "Evidence"]}
+            rows={records(confirmed).map((item) => [str(item.name), str(item.service), chain(item), str(item.evidence)])} />
+        </SubSection>
+      ) : null}
+      {records(dangling).length ? (
+        <SubSection title="Dangling CNAMEs">
+          <Table head={["Name", "Service", "CNAME chain", "Evidence"]}
+            rows={records(dangling).map((item) => [str(item.name), str(item.service), chain(item), str(item.evidence)])} />
+        </SubSection>
+      ) : null}
+      {records(checked).length ? (
+        <SubSection title="Checked names">
+          <Table head={["Name", "Service", "CNAME chain"]}
+            rows={records(checked).map((item) => [str(item.name), str(item.service || item.error), chain(item)])} />
+        </SubSection>
+      ) : null}
+      <GenericEntries data={rest} />
+    </div>
+  );
+}
+
+function OriginPanel({ data }: { data: Data }) {
+  const { cdn, candidates, exposed, note, ...rest } = data;
+  const open = new Set(records(exposed).map((item) => str(item.name)));
+  return (
+    <div className="space-y-2">
+      <Row label="CDN in front" value={str(cdn) || "none detected"} />
+      {records(candidates).length ? (
+        <SubSection title="Names under the target">
+          <Table head={["Name", "Addresses", "Edge", "HTTP", "Origin candidate"]}
+            rows={records(candidates).map((item) => [str(item.name), asList(item.addresses).map(str).join(", "),
+              str(item.edge) || "—", str(item.status) || "—", open.has(str(item.name)) ? "yes" : "no"])} />
+        </SubSection>
+      ) : null}
+      <Row label="Note" value={str(note)} />
+      <GenericEntries data={rest} />
+    </div>
+  );
+}
+
+function FrameworkPanel({ data }: { data: Data }) {
+  const { available, reason, development_build, next_data, next_data_parsed, sensitive_keys, ...rest } = data;
+  return (
+    <div className="space-y-2">
+      <Note data={{ available, reason }} />
+      {development_build !== undefined ? <Row label="Development build served" value={yesNo(development_build)} /> : null}
+      {next_data !== undefined ? <Row label="__NEXT_DATA__ blob" value={yesNo(next_data)} /> : null}
+      {next_data_parsed !== undefined ? <Row label="Blob parses as JSON" value={yesNo(next_data_parsed)} /> : null}
+      {asList(sensitive_keys).length ? <Row label="Sensitive-looking keys" value={<Chips values={asList(sensitive_keys).map(str)} />} /> : null}
+      <GenericEntries data={rest} />
+    </div>
+  );
+}
+
 const PANELS: Record<string, ComponentType<{ data: Data }>> = {
   domain_info: WhoisPanel,
   dns_records: DnsPanel,
@@ -347,6 +495,12 @@ const PANELS: Record<string, ComponentType<{ data: Data }>> = {
   port_exposure: PortPanel,
   seo_analysis: SeoPanel,
   web_technologies: TechPanel,
+  contact_spy: ContactPanel,
+  subdomain_discovery: SubdomainPanel,
+  content_scan: ContentPanel,
+  subdomain_takeover: TakeoverPanel,
+  origin_exposure: OriginPanel,
+  react_exposure: FrameworkPanel,
 };
 
 export const hasData = (module: WebSecModuleOutcome): boolean =>

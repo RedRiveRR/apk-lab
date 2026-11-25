@@ -248,3 +248,96 @@ def test_job_view_distinguishes_bulk_results_from_scan_reports(tmp_path):
     assert view["kind"] == "bulk"
     assert "results" in view
     assert "report" not in view
+
+
+def forbid_scans(monkeypatch, module):
+    """Let readiness/plan subprocesses run, but fail on any spawned scan or bulk job."""
+    real = module.subprocess.Popen
+
+    def guarded(args, *rest, **kwargs):
+        if isinstance(args, (list, tuple)) and len(args) > 2 and args[2] in ("scan", "bulk"):
+            pytest.fail("this path must never start a scan")
+        return real(args, *rest, **kwargs)
+
+    monkeypatch.setattr(module.subprocess, "Popen", guarded)
+
+
+# ── workbench endpoints: saved choices, review plan, compare, guides ─────────
+
+def _engine_api(tmp_path, monkeypatch, hosts=("localhost",)):
+    """A console API over the real engine, with private storage and a test scope."""
+    scope = tmp_path / "scope.json"
+    scope.write_text(json.dumps({
+        "version": 1, "name": "console test", "author" "ization": "unit test only",
+        "expires": "2099-01-01", "hosts": list(hosts), "packages": [], "devices": [], "paths": [],
+    }), encoding="utf-8")
+    monkeypatch.setenv("OSLAB_SCOPE_FILE", str(scope))
+    monkeypatch.setenv("WEBSEC_STORAGE", str(tmp_path / "storage"))
+    return websec_api.WebSecAPI(str(ROOT))
+
+
+def test_preferences_round_trip_through_the_engine(tmp_path, monkeypatch):
+    api = _engine_api(tmp_path, monkeypatch)
+    assert api.get("/api/websec/preferences", {})["preferences"]["scan"]["preset"] == "standard"
+    saved = api.post("/api/websec/preferences", {"scan": {"target": "localhost", "preset": "quick",
+                                                          "modules": ["dns_records"]}})
+    assert saved["preferences"]["scan"]["preset"] == "quick"
+    assert api.get("/api/websec/preferences", {})["preferences"]["scan"]["modules"] == ["dns_records"]
+    assert (tmp_path / "storage" / "preferences.json").is_file()
+    with pytest.raises(websec_api.WebSecError) as refused:
+        api.post("/api/websec/preferences", {"scan": {"preset": "loud"}})
+    assert refused.value.status == 400 and "preset" in str(refused.value)
+    with pytest.raises(websec_api.WebSecError) as refused:
+        api.post("/api/websec/preferences", {"scan": {"active": True}})
+    assert refused.value.status == 400
+    with pytest.raises(websec_api.WebSecError):
+        api.post("/api/websec/preferences", {"monitor": {}})
+
+
+def test_plan_reviews_without_scanning_and_reports_a_refusal(tmp_path, monkeypatch):
+    api = _engine_api(tmp_path, monkeypatch)
+    forbid_scans(monkeypatch, websec_api)
+    plan = api.post("/api/websec/plan", {"target": "localhost", "preset": "full"})
+    assert plan["scope"]["allowed"] is True
+    assert plan["intrusive"] == [] and "port_exposure" in plan["available_intrusive"]
+    active = api.post("/api/websec/plan", {"target": "localhost", "preset": "full", "active": True})
+    assert "port_exposure" in active["intrusive"]
+    outside = api.post("/api/websec/plan", {"target": "example.com"})
+    assert outside["scope"]["allowed"] is False and outside["runs"] == 0
+    with pytest.raises(websec_api.WebSecError) as refused:
+        api.post("/api/websec/plan", {"target": "localhost", "modules": ["no_such_check"]})
+    assert refused.value.status == 400
+    assert api.jobs == {}
+
+
+def _store_report(tmp_path, name, score, grade, findings):
+    folder = tmp_path / "storage" / "reports" / "localhost"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text(json.dumps({
+        "target": "localhost", "started_at": "2026-11-24T00:00:00+00:00", "preset": "quick",
+        "score": score, "grade": grade, "summary": {"total": len(findings)}, "findings": findings,
+        "modules": []}), encoding="utf-8")
+
+
+def test_compare_diffs_two_stored_runs(tmp_path, monkeypatch):
+    api = _engine_api(tmp_path, monkeypatch)
+    hsts = {"module": "security_analysis", "kind": "hsts", "severity": "high", "title": "HSTS is missing"}
+    _store_report(tmp_path, "20261101T000000Z-80.json", 80, "B", [hsts])
+    _store_report(tmp_path, "20261124T000000Z-96.json", 96, "A+", [])
+    diff = api.get("/api/websec/compare", {"target": ["localhost"], "old": ["20261101T000000Z-80.json"],
+                                           "new": ["20261124T000000Z-96.json"]})
+    assert diff["score"]["delta"] == 16
+    assert [item["title"] for item in diff["resolved"]] == ["HSTS is missing"]
+    for query in ({"target": ["localhost"], "old": ["../x.json"], "new": ["y.json"]},
+                  {"target": ["localhost"], "old": ["a.json"], "new": ["a.json"]},
+                  {"target": ["-x"], "old": ["a.json"], "new": ["b.json"]}):
+        with pytest.raises(websec_api.WebSecError) as refused:
+            api.get("/api/websec/compare", query)
+        assert refused.value.status == 400
+
+
+def test_guides_come_from_the_engine(tmp_path, monkeypatch):
+    api = _engine_api(tmp_path, monkeypatch)
+    payload = api.get("/api/websec/guides", {})
+    assert {guide["id"] for guide in payload["guides"]} >= {"scope", "headers", "tls", "dns"}
+    assert payload["byCheck"]["security_analysis"] == "headers"

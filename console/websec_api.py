@@ -444,11 +444,74 @@ class WebSecAPI:
             raise WebSecError(502, "The rendered report is larger than the console accepts")
         return result.stdout
 
+    # ── workbench: saved choices, review plan, compare, guides ───────────────
+
+    def _engine(self, args: List[str], ok=(0,)) -> dict:
+        """Run an engine command whose usage errors (exit 2) are the caller's fault."""
+        result = self._run(args, timeout=20)
+        if result.returncode == 2:
+            message = (result.stderr or "the request was refused").strip().splitlines()[-1][:500]
+            raise WebSecError(400, message.split(": ", 1)[-1] if message.startswith("invalid ") else message)
+        if result.returncode not in ok:
+            message = (result.stderr or "the engine failed").strip().splitlines()[-1][:500]
+            raise WebSecError(502, message)
+        if len(result.stdout) > MAX_OUTPUT:
+            raise WebSecError(502, "The engine answered with more data than the console accepts")
+        try:
+            payload = json.loads(result.stdout)
+        except ValueError:
+            raise WebSecError(502, "The engine answered with something that is not JSON") from None
+        if not isinstance(payload, dict):
+            raise WebSecError(502, "The engine answered with an unexpected shape")
+        return payload
+
+    def preferences(self) -> dict:
+        return self._engine(["prefs", "--json"])
+
+    def save_preferences(self, payload: dict) -> dict:
+        if not isinstance(payload, dict) or set(payload) - {"scan", "bulk"}:
+            raise WebSecError(400, "preferences take only scan and bulk")
+        body = json.dumps(payload, allow_nan=False)
+        if len(body.encode("utf-8")) > MAX_BODY:
+            raise WebSecError(413, "The request body is too large")
+        return self._engine(["prefs", "--save", body, "--json"])
+
+    def plan(self, payload: dict) -> dict:
+        """The no-network review: target, scope decision and the checks that would run."""
+        options = self._validate(payload)
+        args = ["plan", options["target"], "--preset", options["preset"],
+                "--scheme", options["scheme"], "--json"]
+        if options["modules"]:
+            args += ["--modules", ",".join(options["modules"])]
+        if options["active"]:
+            args.append("--active")
+        return self._engine(args, ok=(0, 1))
+
+    def compare(self, target: str, old: str, new: str) -> dict:
+        if not isinstance(target, str) or not TARGET.match(target):
+            raise WebSecError(400, "Invalid target")
+        for name in (old, new):
+            if not isinstance(name, str) or not REPORT_NAME.match(name):
+                raise WebSecError(400, "Invalid report name")
+        if old == new:
+            raise WebSecError(400, "Pick two different runs to compare")
+        return self._engine(["compare", "--target", target, "--old", old, "--new", new, "--json"])
+
+    def guides(self) -> dict:
+        return self._engine(["guides", "--json"])
+
     # ── routing ──────────────────────────────────────────────────────────────
 
     def get(self, path: str, query: dict) -> dict:
         if path == "/api/websec/status":
             return self.status()
+        if path == "/api/websec/preferences":
+            return self.preferences()
+        if path == "/api/websec/guides":
+            return self.guides()
+        if path == "/api/websec/compare":
+            first = lambda key: (query.get(key) or [""])[0]  # noqa: E731
+            return self.compare(first("target"), first("old"), first("new"))
         if path == "/api/websec/modules":
             return self.modules()
         if path == "/api/websec/scope":
@@ -482,6 +545,10 @@ class WebSecAPI:
             return self.start_scan(data)
         if path == "/api/websec/bulk":
             return self.start_bulk(data)
+        if path == "/api/websec/preferences":
+            return self.save_preferences(data)
+        if path == "/api/websec/plan":
+            return self.plan(data)
         raise WebSecError(404, f"Unknown Web Sec Lab route: {path}")
 
     def delete(self, path: str) -> dict:

@@ -8,7 +8,7 @@
 import { useEffect, useReducer } from "react";
 import type { CapabilityCatalog } from "../health/capabilities";
 
-export type LabId = "android" | "windows" | "winapps" | "linux" | "ios" | "macos" | "source" | "web";
+export type LabId = "android" | "windows" | "winapps" | "linux" | "ios" | "macos" | "source" | "websec" | "web";
 export type LabState = "ready" | "needs-setup" | "unavailable";
 
 export interface HostTool {
@@ -118,6 +118,26 @@ export interface LabPlan {
   display: string;
 }
 export type JobState = "running" | "succeeded" | "failed" | "cancelled" | "timed-out" | "interrupted";
+/** One device row of `console/frida_inventory.py` (schema oslab.frida-inventory/1). */
+export interface FridaDevice {
+  id: string;
+  type: string;
+  transport: "local" | "USB" | "TCP";
+  name: string;
+  os: string | null;
+  processes: { pid: number | null; name: string; identifier?: string }[] | null;
+  processCount: number | null;
+  error: string | null;
+}
+export interface FridaInventory {
+  schema: string;
+  generatedAt: string;
+  backend: string | null;
+  devices: FridaDevice[];
+  summary: { devices: number; usb: number; tcp: number; processes: number };
+  errors: { stage: string; device?: string; message: string }[];
+}
+
 export interface LabJob {
   id: string;
   label: string;
@@ -358,6 +378,8 @@ export interface MacSearchInfo {
 export interface WinApp {
   /** Stable HWND; Windows can reuse an HWND only after the window is gone. */
   windowId: number;
+  /** Opaque process/thread/window identity; changes if Windows reuses the HWND. */
+  windowToken: string;
   pid: number;
   app: string;
   /** Whether the owning process is elevated; null when Windows would not report it. */
@@ -371,6 +393,7 @@ export interface WinApp {
   y: number;
   width: number;
   height: number;
+  dpi?: number | null;
 }
 export interface WinAppsInfo {
   available: boolean;
@@ -379,6 +402,105 @@ export interface WinAppsInfo {
   /** Only in the agent view: how many windows the policy withheld. */
   withheld?: number;
 }
+export interface WinElement {
+  elementId: string;
+  role: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  enabled: boolean;
+  focused: boolean;
+  movedFrom?: { x: number; y: number };
+}
+export interface WinElementDiff {
+  added: WinElement[];
+  changed: WinElement[];
+  removed: WinElement[];
+}
+export interface WinElementsInfo {
+  windowId: number;
+  windowToken: string;
+  app: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  revision: string;
+  engine: "uia";
+  trimmed: boolean;
+  elements: WinElement[];
+  diff: WinElementDiff;
+}
+export interface WinSearchInfo {
+  windowId: number;
+  windowToken: string;
+  app: string;
+  revision: string;
+  engine: "uia";
+  query: string;
+  count: number;
+  hits: WinElement[];
+}
+export interface WinControlState {
+  armed: boolean;
+  owner: string | null;
+  expiresInSec: number;
+  audit?: WinAuditRow[];
+  recentActions?: WinAuditRow[];
+}
+export interface WinAuditRow {
+  time: number;
+  kind: string;
+  action?: string;
+  actionId?: string;
+  windowId?: number;
+  app?: string;
+  x?: number;
+  y?: number;
+  deltaX?: number;
+  deltaY?: number;
+  textLength?: number;
+  key?: string;
+  ok?: boolean;
+  reason?: string;
+}
+export type WinInputKind = "type" | "key" | "double_click" | "right_click" | "scroll";
+export type WinInputKey = "tab" | "escape" | "backspace" | "delete" | "up" | "down" | "left" | "right" | "enter";
+export interface WinActionBinding {
+  windowId: number;
+  windowToken: string;
+  revision: string;
+  elementId: string;
+  elementBounds: Pick<WinElement, "x" | "y" | "w" | "h">;
+  owner: string;
+  actionId: string;
+  confirm: true;
+}
+export interface WinClickAction extends WinActionBinding {
+  x: number;
+  y: number;
+  action?: "click" | "double_click" | "right_click" | "scroll";
+  deltaX?: number;
+  deltaY?: number;
+}
+export interface WinInputAction extends WinActionBinding {
+  kind: WinInputKind;
+  text?: string;
+  key?: WinInputKey;
+  x?: number;
+  y?: number;
+  deltaX?: number;
+  deltaY?: number;
+}
+export type WinInputRequest = WinInputAction | ({
+  windowId: number;
+  owner: string;
+  confirm: true;
+} & (
+  | { kind: "type"; text: string }
+  | { kind: "key"; key: WinInputKey }
+  | { kind: "double_click" | "right_click"; x: number; y: number }
+  | { kind: "scroll"; x: number; y: number; deltaX: number; deltaY: number }
+));
 export interface Report {
   name: string;
   url: string;
@@ -399,11 +521,14 @@ export interface CleanupStatus {
 export interface CleanupEntry {
   id: string; name: string; category: string; risk: string; hint: string; impact: string;
   defaultSelected: boolean; needsPrivilege: boolean;
+  /** False for measured-only entries (toolchains, agent data): a plan skips them. Absent on older consoles. */
+  cleanable?: boolean; family?: string;
   paths: { template: string; path: string | null; reason: string; source?: string }[];
 }
 export interface CleanupScan {
   cancelled: boolean;
-  entries: { id: string; name: string; category: string; risk: string; sizeBytes: number; files: number; folders: number; unreadable: string[]; paths: { path: string | null; reason: string; source?: string; sizeBytes: number; error: string | null }[] }[];
+  /** modifiedAt: newest file mtime in epoch seconds; absent on older consoles. */
+  entries: { id: string; name: string; category: string; risk: string; sizeBytes: number; files: number; folders: number; unreadable: string[]; modifiedAt?: number | null; paths: { path: string | null; reason: string; source?: string; sizeBytes: number; error: string | null; modifiedAt?: number | null }[] }[];
   totals: { sizeBytes: number; files: number; folders: number; unreadable: number };
 }
 export interface CleanupPlan {
@@ -465,24 +590,39 @@ export interface CleanupPermissions {
 }
 /** CLNP-09/10: one configured volume of the background monitor. */
 export interface CleanupMonitorVolumeConfig {
-  mountPoint: string; minFreeBytes: number; minFreePercent: number; enabled: boolean;
+  mountPoint: string; minFreeBytes: number; minFreePercent: number; criticalFreeBytes?: number | null; enabled: boolean;
   volume: { freeBytes: number | null; totalBytes: number | null; usage: number | null; kind: string | null } | null;
 }
 export interface CleanupMonitorStatus {
   enabled: boolean; running: boolean; intervalSeconds: number; cooldownSeconds: number;
+  /** CUX-07: repeat a standing warning after this long (0 = never) and notify outside the window. */
+  reminderSeconds?: number; notify?: boolean;
   volumes: CleanupMonitorVolumeConfig[];
   state: {
     volumes: Record<string, { armed: boolean; lastWarningAt: number | null; state: string }>;
     events: { at: number; kind: string; volume: string | null; freeBytes: number | null; thresholdBytes: number | null; message: string }[];
     lastEvaluationAt: number | null; lastError: string | null;
   };
-  activeWarnings: { volume: string; lastWarningAt: number | null }[];
+  activeWarnings: { volume: string; lastWarningAt: number | null; level?: "warning" | "critical" }[];
   configError: string | null;
   checkedAt: number;
 }
 export interface CleanupMonitorConfig {
-  enabled: boolean; intervalSeconds: number; cooldownSeconds: number;
-  volumes: { mountPoint: string; minFreeBytes: number; minFreePercent: number; enabled: boolean }[];
+  enabled: boolean; intervalSeconds: number; cooldownSeconds: number; reminderSeconds?: number; notify?: boolean;
+  volumes: { mountPoint: string; minFreeBytes: number; minFreePercent: number; criticalFreeBytes?: number | null; enabled: boolean }[];
+}
+/** CUX-08: the saved suggestion preferences and what a scan suggests under them. */
+export interface CleanupSuggestionPrefs {
+  mode: "auto" | "recommended" | "extended"; include: string[]; exclude: string[];
+  minEntryBytes: number; targetFreeBytes: number | null;
+}
+export interface CleanupPreferences { suggestion: CleanupSuggestionPrefs; configError: string | null }
+export interface CleanupSuggestion {
+  mode: CleanupSuggestionPrefs["mode"];
+  items: { id: string; name: string; bytes: number; risk: string; reason: string }[];
+  totalBytes: number;
+  pressure: { underPressure: boolean; freeBytes: number | null; targetFreeBytes: number | null; shortfallBytes: number; covers: boolean; remainingBytes: number };
+  skipped: { id: string; reason: string }[]; ignoredIds: string[]; configError: string | null;
 }
 /** CLNP-23: one registered Space Explorer root. */
 export interface CleanupExplorerRoot {
@@ -610,6 +750,105 @@ export interface WebOverview {
   eventCount: number; lastEventSeq: number;
 }
 
+// Web Sec Lab (console/websec_api.py → web-sec/engine)
+export type WebSecState = "ready" | "needs-setup" | "unavailable";
+export type WebSecSeverity = "critical" | "high" | "medium" | "low" | "info";
+export interface WebSecRequirement {
+  id: string; label: string; found: boolean; required: boolean; hint: string;
+}
+export interface WebSecStatus {
+  state: WebSecState; provider: string | null; requirements: WebSecRequirement[];
+  reasons: string[]; notes: string[]; version: string; python: string; storage: string;
+}
+export interface WebSecModule {
+  id: string; label: string; description: string; group: string;
+  weight: string; active: boolean; upstream: string;
+}
+export interface WebSecFinding {
+  module: string; severity: WebSecSeverity; title: string; detail: string;
+  evidence: string; remediation: string; refs: string[];
+  kind?: string; cwe?: string; cwe_name?: string; owasp?: string;
+}
+export interface WebSecModuleOutcome {
+  id: string; label: string; status: string; duration_ms: number;
+  findings: number; error: string; note: string; data?: Record<string, unknown>;
+}
+export interface WebSecReport {
+  target: string; url: string; started_at: string; duration_seconds: number;
+  preset: string; active: boolean; score: number; grade: string;
+  summary: Record<WebSecSeverity | "total", number>;
+  refused: boolean; refusal: string;
+  modules: WebSecModuleOutcome[]; findings: WebSecFinding[];
+}
+export interface WebSecJob {
+  id: string; state: "running" | "done" | "error" | "cancelled";
+  target: string; preset: string; active: boolean; started: number;
+  report?: WebSecReport; error?: string;
+  progress?: { modules: { id: string; status: string | null }[] };
+}
+export interface WebSecHistoryEntry {
+  target: string; scanned_at: string; score: number; grade: string;
+  summary: Record<string, number>; preset: string; active: boolean; refused: boolean;
+  name?: string; favourite?: boolean;
+}
+export interface WebSecStats {
+  targets: number; runs: number; reports: number; bytes: number; favourites: number;
+  grades: Record<string, number>; latestFindings: Record<string, number>;
+  latest: { target: string; grade: string; score: number; scanned_at: string; name?: string; findings: number }[];
+}
+export interface WebSecReportFile { name: string; bytes: number; modified: number }
+export interface WebSecBulkTarget {
+  target: string; score?: number; grade?: string;
+  summary?: Record<string, number>; error: string;
+}
+export interface WebSecBulkJob {
+  id: string; state: "running" | "done" | "error" | "cancelled";
+  kind?: "scan" | "bulk"; target: string; preset: string; active: boolean; started: number;
+  results?: { targets: WebSecBulkTarget[]; count: number }; error?: string;
+}
+
+export interface WebSecPreferences {
+  scan: { target: string; preset: string; scheme: "http" | "https"; modules: string[]; timeout: number | null; deadline: number | null };
+  bulk: { preset: string };
+}
+export interface WebSecPreferencesPayload { preferences: WebSecPreferences; configError: string | null; version: number }
+export interface WebSecDiffFinding { module: string; severity: WebSecSeverity; title: string }
+export interface WebSecCompare {
+  target: string;
+  score: { current: number; previous: number; delta: number };
+  grade: { current: string; previous: string };
+  summary: Record<WebSecSeverity | "total", { current: number; previous: number }>;
+  new: WebSecDiffFinding[]; resolved: WebSecDiffFinding[];
+  modules: { id: string; previous: string | null; current: string | null }[];
+  from: { name: string; started_at?: string; preset?: string };
+  to: { name: string; started_at?: string; preset?: string };
+}
+export interface WebSecMonitorConfig {
+  enabled: boolean; targets: string[]; intervalMinutes: number; preset: "quick" | "standard";
+  alertOn: "critical" | "high" | "medium" | "low"; notify: boolean; reminderHours: number; scopeWarnDays: number;
+}
+export interface WebSecMonitorWarning { target: string; level: "warning" | "critical"; since: number; message: string; flagged: string[] }
+export interface WebSecMonitorEvent { at: number; kind: string; target: string; message: string }
+export interface WebSecMonitorTarget { lastRun?: number; status?: string; error?: string; grade?: string; score?: number; lastReport?: string }
+export interface WebSecMonitorStatus {
+  config: WebSecMonitorConfig; configError: string | null;
+  targets: Record<string, WebSecMonitorTarget>; activeWarnings: WebSecMonitorWarning[];
+  events: WebSecMonitorEvent[]; intervals: number[];
+  runner?: { alive: boolean; running: boolean; lastTick: { at: number; error: string; events: number; scanned: number } };
+}
+export interface WebSecPlan {
+  target: string; url: string; preset: string; scheme: string; active: boolean;
+  scope: { allowed: boolean; reason: string; rule: string };
+  checks: { id: string; label: string; active: boolean; weight: string; runs: boolean; note: string }[];
+  intrusive: string[]; available_intrusive: string[]; runs: number;
+}
+export interface WebSecGuide { id: string; title: string; checks: string[]; points: string[]; refs: string[] }
+export interface WebSecReference {
+  ports: { port: number; service: string; kind: "database" | "plaintext" | "admin" | "service" }[];
+  headers: { header: string; expect: string }[];
+}
+export interface WebSecGuides { guides: WebSecGuide[]; byCheck: Record<string, string>; reference?: WebSecReference }
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -681,8 +920,16 @@ export const api = {
   cleanupPermissions: () => call<CleanupPermissions>("/api/cleanup/permissions"),
   /** The grant round-trip: name a permission, the console opens System Settings. */
   cleanupPermissionsOpen: (permissionId: string) => post<{ permissionId: string; opened: string }>("/api/cleanup/permissions/open-settings", { permissionId }),
+  /** The app bundle the console runs under: the one that needs Full Disk Access. */
+  cleanupHostApp: () => call<{ app: { path: string; name: string; bundleId: string | null } | null }>("/api/cleanup/permissions/host-app"),
+  cleanupRevealApp: () => post<{ revealed: string }>("/api/cleanup/permissions/reveal-app", {}),
+  cleanupResetPermission: () => post<{ reset: string }>("/api/cleanup/permissions/reset", {}),
   cleanupMonitor: () => call<CleanupMonitorStatus>("/api/cleanup/monitor"),
   cleanupMonitorConfig: (config: CleanupMonitorConfig) => post<CleanupMonitorStatus>("/api/cleanup/monitor/config", config),
+  cleanupPreferences: () => call<CleanupPreferences>("/api/cleanup/preferences"),
+  cleanupPreferencesSave: (suggestion: CleanupSuggestionPrefs) => post<CleanupPreferences>("/api/cleanup/preferences", { suggestion }),
+  cleanupSuggest: (jobId: string) => post<CleanupSuggestion>("/api/cleanup/suggest", { jobId }),
+  cleanupRevealEntry: (entryId: string) => post<{ revealed: string }>("/api/cleanup/entries/reveal", { entryId }),
   cleanupMonitorEvaluate: () => post<CleanupMonitorStatus>("/api/cleanup/monitor/evaluate"),
   cleanupVolumes: () => call<CleanupVolumes>("/api/cleanup/volumes"),
   /** CLN-27: relocatable entries and destination volumes, then plan → confirm → run. */
@@ -768,12 +1015,34 @@ export const api = {
   macosAxPerform: (input: { pid: number; path: string; identity?: string; action: string; windowId?: number }) =>
     post<{ ok: boolean; actionSent: boolean }>("/api/labs/macos/element/perform", input),
   winappsApps: () => call<WinAppsInfo>("/api/labs/winapps/apps"),
-  winappsAppScreenshotUrl: (windowId: number) => `/api/labs/winapps/apps/${windowId}/screenshot`,
+  winappsAppScreenshotUrl: (windowId: number, windowToken?: string) =>
+    `/api/labs/winapps/apps/${windowId}/screenshot${windowToken ? `?windowToken=${encodeURIComponent(windowToken)}` : ""}`,
+  winappsAppStreamUrl: (windowId: number, fps: number, windowToken?: string) =>
+    `/api/labs/winapps/apps/${windowId}/stream?fps=${fps}${windowToken ? `&windowToken=${encodeURIComponent(windowToken)}` : ""}`,
+  winappsElements: (windowId: number, revision?: string, windowToken?: string) => {
+    const query = new URLSearchParams();
+    if (revision) query.set("revision", revision);
+    if (windowToken) query.set("windowToken", windowToken);
+    const suffix = query.toString();
+    return call<WinElementsInfo>(`/api/labs/winapps/apps/${windowId}/elements${suffix ? `?${suffix}` : ""}`);
+  },
+  winappsSearch: (windowId: number, query: string, windowToken?: string) =>
+    call<WinSearchInfo>(`/api/labs/winapps/apps/${windowId}/search?q=${encodeURIComponent(query)}${windowToken ? `&windowToken=${encodeURIComponent(windowToken)}` : ""}`),
+  winappsControl: () => call<WinControlState>("/api/labs/winapps/control"),
+  winappsControlArm: (armed: boolean, owner?: string) =>
+    post<WinControlState>("/api/labs/winapps/control", { armed, owner }),
+  winappsClick: (input: WinClickAction | { windowId: number; x: number; y: number; owner: string; confirm: true }) =>
+    post<{ ok: boolean; actionSent: boolean; windowId: number; x: number; y: number; action?: string; actionId?: string }>("/api/labs/winapps/click", input),
+  winappsInput: (input: WinInputRequest) =>
+    post<{ ok: boolean; actionSent: boolean; windowId: number; kind: WinInputKind; action?: WinInputKind; textLength?: number;
+      key?: WinInputKey; x?: number; y?: number; deltaX?: number; deltaY?: number; actionId?: string }>("/api/labs/winapps/input", input),
+  winappsStop: () => post<{ ok: boolean; disarmed: boolean }>("/api/labs/winapps/stop", {}),
   plan: (request: LabRequest) => post<{ plan: LabPlan; token: string }>("/api/labs/plan", { request }),
   start: (request: LabRequest, token: string) => post<LabJob>("/api/labs/start", { request, token }),
   jobs: () => call<{ jobs: LabJob[] }>("/api/jobs"),
   job: (id: string) => call<LabJob>(`/api/jobs/${encodeURIComponent(id)}`),
   cancel: (id: string) => post<LabJob>(`/api/jobs/${encodeURIComponent(id)}/cancel`),
+  fridaInventory: (host = "") => call<FridaInventory>(`/api/frida/inventory${host ? `?host=${encodeURIComponent(host)}` : ""}`),
   // Android Lab workbench
   logs: () => call<AndroidLogs>("/api/logs"),
   clearLogs: () => post("/api/logs/clear"),
@@ -816,6 +1085,36 @@ export const api = {
   webEvents: (since: number) => call<{ events: WebEvent[]; lastSeq: number; count: number }>(`/api/web/events?since=${since}`),
   webAddInjection: (name: string, code: string) => post<{ ok: boolean; injection: WebInjection }>("/api/web/injections", { name, code }),
   webDeleteInjection: (id: string) => call<{ ok: boolean; removed: boolean }>(`/api/web/injections/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-OSLab": "1" } }),
+  websecStatus: () => call<WebSecStatus>("/api/websec/status"),
+  websecModules: () => call<{ modules: WebSecModule[]; presets?: Record<string, string[]> }>("/api/websec/modules"),
+  websecStart: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean; cveLookup?: boolean; timeout?: number; deadline?: number }) =>
+    post<WebSecJob>("/api/websec/scans", request),
+  websecJob: (id: string) => call<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecCancel: (id: string) => del<WebSecJob>(`/api/websec/scans/${encodeURIComponent(id)}`),
+  websecBulkStart: (request: { targets: string[]; preset?: string }) =>
+    post<WebSecBulkJob>("/api/websec/bulk", request),
+  websecBulkJob: (id: string) => call<WebSecBulkJob>(`/api/websec/bulk/${encodeURIComponent(id)}`),
+  websecHistory: (target?: string) =>
+    call<{ entries: WebSecHistoryEntry[] }>(`/api/websec/history?limit=20${target ? `&target=${encodeURIComponent(target)}` : ""}`),
+  websecReports: (target: string) =>
+    call<{ reports: WebSecReportFile[] }>(`/api/websec/reports?target=${encodeURIComponent(target)}`),
+  websecPreferences: () => call<WebSecPreferencesPayload>("/api/websec/preferences"),
+  websecSavePreferences: (preferences: WebSecPreferences) =>
+    post<WebSecPreferencesPayload>("/api/websec/preferences", preferences),
+  websecCompare: (target: string, oldName: string, newName: string) =>
+    call<WebSecCompare>(`/api/websec/compare?target=${encodeURIComponent(target)}&old=${encodeURIComponent(oldName)}&new=${encodeURIComponent(newName)}`),
+  websecGuides: () => call<WebSecGuides>("/api/websec/guides"),
+  websecPlan: (request: { target: string; preset: string; scheme: "http" | "https"; modules?: string[]; active?: boolean }) =>
+    post<WebSecPlan>("/api/websec/plan", request),
+  websecStats: () => call<WebSecStats>("/api/websec/runs/stats"),
+  websecFavourite: (target: string, name: string, on: boolean) => post<{ favourite: boolean }>("/api/websec/runs/favourite", { target, name, on }),
+  websecDeleteRuns: (target: string, names: string[]) => post<{ deleted: number }>("/api/websec/runs/delete", { target, names }),
+  websecClearRuns: (scope: { target: string } | { all: true }) => post<{ deleted: number }>("/api/websec/runs/clear", scope),
+  websecMonitor: () => call<WebSecMonitorStatus>("/api/websec/monitor"),
+  websecMonitorConfig: (config: WebSecMonitorConfig) => post<WebSecMonitorStatus>("/api/websec/monitor/config", { config }),
+  websecMonitorRun: () => post<{ queued: boolean }>("/api/websec/monitor/run", {}),
+  websecReport: (target: string, name: string, format: string) =>
+    call<{ content: string; format: string; name: string; encoding?: "base64" }>(`/api/websec/report?target=${encodeURIComponent(target)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(format)}`),
   upload: async (file: File) => {
     const form = new FormData();
     form.append("apk", file);

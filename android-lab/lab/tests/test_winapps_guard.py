@@ -300,7 +300,7 @@ def test_gone_window_and_capture_failures_map_to_codes(world, monkeypatch):
     assert gone.value.code == "WINDOW_GONE" and gone.value.retry == "retry"
 
     def failing(hwnd):
-        raise winapps.WinAppError("Could not capture that window", "CAPTURE_FAILED")
+        raise winapps.WinAppError("Could not capture that window", code="CAPTURE_FAILED")
 
     monkeypatch.setattr(winapps, "winapps_window_screenshot", failing)
     with pytest.raises(guard.GuardError) as failed:
@@ -488,3 +488,78 @@ def test_agents_get_a_smaller_capture_ceiling_than_people(world):
         guard.screenshot(world["root"], 1, "agent")
     assert refused.value.code == "CAPTURE_TOO_LARGE"
     assert guard.screenshot(world["root"], 1, "human") == PNG
+
+
+# ── require_window: the gate in front of UIA, search, stream and input (merged with #316/#318) ──
+
+def test_require_window_refuses_restricted_windows_for_everyone(world):
+    for audience in ("human", "agent"):
+        with pytest.raises(guard.GuardError) as refused:
+            guard.require_window(world["root"], 3, audience)
+        assert refused.value.code == "RESTRICTED_WINDOW"
+    assert guard.require_window(world["root"], 2, "human")["windowId"] == 2
+    with pytest.raises(guard.GuardError) as refused:
+        guard.require_window(world["root"], 2, "agent")
+    assert refused.value.code == "APP_NOT_ALLOWED"
+    assert world["captures"] == []  # a check never captures
+
+
+def test_require_window_rejects_bad_and_gone_ids(world):
+    for bad in ("x", True, 0, 2 ** 40, None):
+        with pytest.raises(guard.GuardError) as refused:
+            guard.require_window(world["root"], bad, "human")
+        assert refused.value.code == "INVALID_WINDOW"
+    with pytest.raises(guard.GuardError) as gone:
+        guard.require_window(world["root"], 999, "human")
+    assert gone.value.code == "WINDOW_GONE" and gone.value.retry == "retry"
+
+
+def test_require_window_is_a_no_op_off_windows(world, monkeypatch):
+    monkeypatch.setattr(winapps.sys, "platform", "darwin")
+    assert guard.require_window(world["root"], 3, "human") is None
+
+
+def test_screenshot_passes_the_window_token_through(world, monkeypatch):
+    seen = []
+    monkeypatch.setattr(winapps, "winapps_window_screenshot", lambda hwnd, token=None: seen.append((hwnd, token)) or PNG)
+    assert guard.screenshot(world["root"], 1, "human", expected_token="t" * 24) == PNG
+    assert seen == [(1, "t" * 24)]
+
+
+# ── audit accuracy (review findings on #299) ─────────────────────────────────
+
+def _lines(folder):
+    return [json.loads(line) for line in next(folder.glob("winapps-audit-*.jsonl")).read_text().splitlines()]
+
+
+def test_interleaved_duplicates_still_coalesce(audit_dir, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(guard.time, "time", lambda: clock[0])
+    for _ in range(3):
+        guard.audit(None, "refused", audience="human", window_id=7, code="RESTRICTED_WINDOW")
+        guard.audit(None, "list", audience="agent")
+        clock[0] += 1
+    kinds = [row["kind"] for row in rows()]
+    assert kinds == ["refused", "list"]
+    assert [row["count"] for row in rows()] == [3, 3]
+
+
+def test_the_final_coalesced_count_reaches_the_file(audit_dir, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(guard.time, "time", lambda: clock[0])
+    for _ in range(4):
+        guard.audit(None, "refused", audience="human", window_id=7, code="RESTRICTED_WINDOW")
+        clock[0] += 5
+    clock[0] += 120  # the window closes; the next event flushes the count
+    guard.audit(None, "list", audience="agent")
+    lines = _lines(audit_dir)
+    assert lines[0]["kind"] == "refused" and lines[0]["count"] == 1
+    assert {"seq": lines[0]["seq"], "kind": "count", "count": 4} in lines
+
+
+def test_a_restart_on_the_same_day_continues_the_sequence(audit_dir):
+    guard.audit(None, "list", audience="agent")
+    guard.audit(None, "doctor", audience="agent")
+    guard._reset_audit()  # a new console process
+    guard.audit(None, "screenshot", audience="agent", window_id=1)
+    assert [line["seq"] for line in _lines(audit_dir)] == [1, 2, 3]

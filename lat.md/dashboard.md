@@ -13,9 +13,12 @@ Node server at runtime.
 availability pills), Spotlight and theme ported from qLar.
 [[dashboard/src/shell/lab-switcher.tsx]] is the ⌘L / Ctrl+L modal that sets the
 focused lab: a compact card per lab with its live availability, remembered in
-[[dashboard/src/shell/active-lab.ts]]. With a focus, the sidebar's OS Lab group
-keeps only that lab's entry (plus the firewall section); "All labs" in the
-switcher restores the full list, and Spotlight keeps every lab listed.
+[[dashboard/src/shell/active-lab.ts]]. Firewall Lab is one of those labs. With a
+focus, the sidebar replaces the OS Lab group with a group named after the lab
+that lists its nav items; "All labs" in the switcher restores the full OS Lab
+list, and Spotlight keeps every lab listed. The Help group is collapsible,
+closed by default, opens itself when the current page is inside it, and
+remembers the choice in localStorage.
 Pages are React
 islands: [[dashboard/src/views/host-page.tsx]],
 [[dashboard/src/views/lab-page.tsx]], [[dashboard/src/views/jobs-page.tsx]],
@@ -62,7 +65,10 @@ submit-class confirms for Enter and pastes even while armed, a persistent
 panic Stop, single-owner arming, and read-only windows/menu-bar/focused
 endpoints. `console/mcp_server.py` exposes the same guarded surface as a
 stdio MCP server — the model acts, the console guards, every step is
-audited. See [[ios-lab]] for permissions.
+audited. See [[ios-lab]] for permissions. The same server carries the Cleanup
+Lab tools, described in [[cleanup-lab#Dashboard pages#MCP tools (CUX-10)]], and the Web
+Sec Lab tools ([[web-sec#MCP tools]]). `tools/call` reads the MCP `arguments` key and
+still accepts the older `args`.
 
 
 ## macOS engine panel
@@ -78,15 +84,58 @@ when switched off, hidden or unmounted.
 
 ## Windows Apps Lab panel
 
-On Windows hosts, `winapps` serves a read-only desktop mirror through
-`/api/labs/winapps/apps` and `/api/labs/winapps/apps/<hwnd>/screenshot`.
+On Windows, `winapps` mirrors visible windows via `/api/labs/winapps/apps`,
+`/screenshot`, and multipart `/stream?fps=`. Its draggable panel supports
+resize, dock/hide, selection, stream fallback, and retry.
 
 The backend uses ctypes to enumerate visible, captioned top-level windows and
-captures one window with `PrintWindow(PW_RENDERFULLCONTENT)`. The panel shows
+captures one window with a bounded `WM_PRINT` request. An unresponsive app gets
+up to 1.5 seconds to paint; desktop-pixel fallback is used only when no higher
+window overlaps the target. Otherwise the API returns a timeout instead of
+blocking the console worker. The panel shows
 the selected window at its own aspect ratio, its dimensions and an `Elevated`
 badge when the owning process is elevated; only the newest capture updates the
 view. It is mounted only locally, is separate from the WSL2-backed VM lifecycle,
-and does not offer input control.
+and public Pages never mounts it. UI Automation endpoints expose at most 150
+visible, non-password controls with roles, labels and window-relative bounds;
+`/elements?revision=` returns bounded added/changed/removed diffs and `/search?q=`
+matches labels or roles with at most 50 results. The mirror can display and
+search these controls as clickable hotspots.
+
+The local panel also supports a draggable/resizable floating mirror, dock/hide,
+and a bounded multipart PNG stream at
+`/api/labs/winapps/apps/<hwnd>/stream?fps=` with a screenshot-poll fallback.
+At most two streams can capture at once. Each stream is bound to the selected
+window identity and ends if the HWND is recycled, the client disconnects, or
+the stream reaches its time limit. Multipart frames are validated PNGs and are
+capped to the largest capture dimensions the backend permits. A stalled stream
+times out in the browser and falls back to snapshots; a large valid frame does
+not trigger polling. The floating panel clamps drag and resize bounds to the
+viewport and its contents remain scrollable on narrow screens.
+
+Control is separate and opt-in: `/control` grants one local owner a ten-minute
+lock, renewed after confirmed actions, and returns a bounded recent-action
+summary. Click and keyboard input require the lock, a confirmation, a current
+window identity and UIA revision, plus a foreground check immediately before
+delivery. Focus is requested through UI Automation; the console does not force
+foreground with `SetForegroundWindow` or `BringWindowToTop`, and rejects the
+action if the target is not foreground. Hotspot clicks are bound to a visible
+element ID and bounds; text and key input are bound to the previewed focused
+element. `/click` supports single, double, right-click and bounded scroll
+actions; `/input` accepts printable text, the restricted navigation key
+allowlist, or UIA-bound double-click, right-click and bounded scroll actions. Window identity tokens accompany captures, UIA reads, and actions
+so a recycled HWND cannot silently retarget an existing mirror or approval.
+Each confirmed action has a bounded idempotency key and is rejected if its UIA
+revision or control bounds changed after preview. The dashboard previews each
+target in a confirmation dialog; Enter is explicitly called out because it can
+submit a form. Win32 bounds, UIA rectangles, capture pixels and pointer
+coordinates share a per-monitor-aware physical-pixel space. Capture retries
+`PrintWindow(PW_RENDERFULLCONTENT)` and permits desktop blit fallback only
+when the target is not overlapped. A panic-stop endpoint disarms the lock and
+ends active mirror streams. The `/control` status includes a short safe audit
+summary; it never includes typed text or window titles. Input auditing is
+bounded. Mutating requests continue to require the console's localhost/Host
+validation and `X-OSLab: 1`.
 
 ## UX readiness
 
@@ -143,7 +192,14 @@ and monitor stats) and a Settings tab, with the detail tabs keeping their
 routes ([[dashboard/src/views/cleanup/pages.tsx]]).
 
 Settings hosts bookmarks, permissions, the monitor configuration, widgets and
-the tools hub. The public route explains that the engine is local, while the
+the tools hub, and is the last item in the Cleanup Lab nav and tab strip.
+
+In the sidebar, Dashboard, Advanced scan, Results and Settings are collapsible
+groups, closed until their page is open. Each lists an Overview entry plus one
+sub-nav per card, such as Storage, Plan & confirm or Desktop widgets. A
+sub-nav link (`/cleanup/<page>/#<section>`) loads the page, scrolls to that
+card once its data is in and outlines it for a few seconds. Spaces, Leftovers,
+History and Relocation have a single card and no group. The public route explains that the engine is local, while the
 local app uses typed cleanup jobs and a confirm step.
 
 [[dashboard/src/views/source/pages.tsx]] provides localized Source Lab routes and

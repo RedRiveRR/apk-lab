@@ -1,0 +1,100 @@
+name: os-lab Web Sec Lab scan
+description: Scope-guarded web posture scan with SARIF for Code Scanning, a job summary and a severity gate.
+branding:
+  icon: shield
+  color: orange
+
+# Use from a workflow:  uses: <owner>/os-lab/web-sec@<ref>
+# Only scan hosts you own or are authorized to test: the scope file is the authorization
+# record, and every network call is checked against it before it happens.
+
+inputs:
+  target:
+    description: One host name or address. It must be listed in the scope file.
+    required: true
+  scope-file:
+    description: Path (in the workspace) of the scope manifest (console/scope.example.json format).
+    required: true
+  preset:
+    description: quick, standard or full.
+    required: false
+    default: standard
+  modules:
+    description: Comma-separated check ids (see `run.py modules`). Overrides `preset`.
+    required: false
+    default: ""
+  active:
+    description: Also run the intrusive checks. Only with written authorization for the host.
+    required: false
+    default: "false"
+  fail-on:
+    description: Fail the job when a finding is at least this severe - none, info, low, medium, high or critical.
+    required: false
+    default: high
+  baseline:
+    description: Optional JSON report from an earlier run; the gate then counts only new findings.
+    required: false
+    default: ""
+  sarif-file:
+    description: Where to write the SARIF report.
+    required: false
+    default: websec.sarif
+  upload-sarif:
+    description: "Upload the SARIF report to GitHub Code Scanning (needs `security-events: write`)."
+    required: false
+    default: "false"
+  python-version:
+    description: Python to run the engine with (3.9 or newer; the engine has no dependencies).
+    required: false
+    default: "3.12"
+
+outputs:
+  sarif-file:
+    description: Path of the SARIF report.
+    value: ${{ inputs.sarif-file }}
+  exit-code:
+    description: "0 clean, 1 refused by the scope, 2 usage error, 4 findings at or above fail-on."
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - id: scan
+      shell: bash
+      env:
+        OSLAB_SCOPE_FILE: ${{ github.workspace }}/${{ inputs.scope-file }}
+        WEBSEC_STORAGE: ${{ runner.temp }}/websec-storage
+        INPUT_TARGET: ${{ inputs.target }}
+        INPUT_PRESET: ${{ inputs.preset }}
+        INPUT_MODULES: ${{ inputs.modules }}
+        INPUT_ACTIVE: ${{ inputs.active }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_SARIF: ${{ inputs.sarif-file }}
+      run: |
+        set -u
+        args=(scan "$INPUT_TARGET" --preset "$INPUT_PRESET" --format sarif --out "$INPUT_SARIF"
+              --no-history --fail-on "$INPUT_FAIL_ON" --summary "$GITHUB_STEP_SUMMARY")
+        [ -n "$INPUT_MODULES" ] && args+=(--modules "$INPUT_MODULES")
+        [ "$INPUT_ACTIVE" = "true" ] && args+=(--active)
+        [ -n "$INPUT_BASELINE" ] && args+=(--baseline "$INPUT_BASELINE")
+        set +e
+        python "$GITHUB_ACTION_PATH/run.py" "${args[@]}"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        # keep the gate's exit code for the last step, so the SARIF upload still runs
+        echo "WEBSEC_EXIT=$code" >> "$GITHUB_ENV"
+
+    - if: ${{ always() && inputs.upload-sarif == 'true' && hashFiles(inputs.sarif-file) != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: websec
+
+    - shell: bash
+      run: exit "${WEBSEC_EXIT:-0}"

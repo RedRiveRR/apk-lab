@@ -24,6 +24,7 @@ Labs:
   ios | ios-lab      iOS/macOS lab (ios-lab/); native macOS uses make -C ios-lab mac-*
   linux | lin        Linux VM lab (linux-lab/)
   source             Local source/package analysis (source-lab/)
+  websec             Scope-guarded web posture assessment (web-sec/)
   cleanup            Cleanup Lab disk scan/clean engine (cleanup-lab/)
   web                Web Lab embedded browser engine (web-lab/)
   all                Run a command for Linux-host labs
@@ -51,6 +52,7 @@ Commands:
   shell [service] [--adb]       Shell into the guest or tools container
   urls                          Print access URLs
   resize [options]              Change CPU/RAM/disk/device
+  trace [options]               Trace target functions with frida-trace into a JSON call map + session log
   service install|uninstall     Install/remove the systemd boot unit
   service status                Show the systemd unit state
   version                       Print version
@@ -246,6 +248,9 @@ Run from the checkout root as `make -C android-lab/lab TARGET [VARIABLE=value ..
 - `wf2` — WF2 dynamic: boot → deploy → mitmproxy → frida (optional). make wf2 APK=app.apk [PKG=com.example]
 - `pinning` — PENT-11 static SSL-pinning classifier (no device needed): make pinning APK=app.apk
 - `hook` — Run a Frida hook against a running app: make hook PKG=com.example HOOK=hooks/ssl-pinning-bypass.js
+- `trace` — See target recipe in this Makefile.
+- `trace` — See target recipe in this Makefile.
+- `trace` — Trace functions with frida-trace into a JSON call map: make trace PKG=com.example [GLOB='*auth*']
 - `report` — Collect logs, device status and flows into artifacts/
 - `install-service` — Install a systemd unit that starts the stack at boot
 - `uninstall-service` — Remove the systemd unit
@@ -329,6 +334,12 @@ subparsers.add_parser("ui", help="Launch interactive web console")
 ui_parser.add_argument("--port", type=int, default=5050, help="Port to bind (default: 5050)")
 subparsers.add_parser("parse-flows", help="Parse mitmproxy flows")
 flows_parser.add_argument("--file", default=os.path.join(ARTIFACTS_DIR, "flows.mitm"), help="Path to flows.mitm")
+subparsers.add_parser("trace", help="Trace target functions with frida-trace into a JSON call map")
+trace_parser.add_argument("--target", default="com.testlab.vulnerable", help="Target package/process name or PID")
+trace_parser.add_argument("--include", action="append", default=[], help="Symbol glob to trace (repeatable)")
+trace_parser.add_argument("--simulate", action="store_true", help="Run offline against built-in 05.10 lab trace fixture")
+trace_parser.add_argument("--out", default=os.path.join(ARTIFACTS_DIR, "traces", "call-map.json"), help="Output JSON call map")
+trace_parser.add_argument("--session-log", default=os.path.join(ARTIFACTS_DIR, "traces", "trace-session.md"), help="Output session log")
 subparsers.add_parser("clean", help="Clean artifacts directory")
 ```
 

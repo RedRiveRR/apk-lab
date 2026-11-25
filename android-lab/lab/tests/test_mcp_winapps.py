@@ -91,7 +91,7 @@ def test_guard_and_collector_errors_become_is_error_with_code(on_windows, monkey
 
     monkeypatch.setattr(winapps_guard, "list_windows", broken)
     failed = call("winapps_apps")
-    assert failed["isError"] is True and payload(failed) == {"error": "enumeration failed", "code": "CAPTURE_FAILED"}
+    assert failed["isError"] is True and payload(failed) == {"error": "enumeration failed", "code": "WINAPP_ERROR"}
 
 
 def test_winapps_capabilities_reports_policy_summary_and_input_unsupported(on_windows, monkeypatch, tmp_path):
@@ -207,16 +207,17 @@ def test_macos_tools_also_read_the_spec_key(monkeypatch):
 
 
 def test_capabilities_report_the_input_gate_without_naming_its_owner(on_windows, monkeypatch, tmp_path):
-    import winapps_input_gate as gate
+    import winapps
 
     monkeypatch.setenv("OSLAB_WINAPPS_POLICY", str(tmp_path / "absent.json"))
     monkeypatch.setenv("OSLAB_WINAPPS_AUDIT_DIR", str(tmp_path / "audit"))
-    gate._reset()
-    gate.arm(str(tmp_path), "secret-owner", 30)
-    try:
-        result = payload(call("winapps_capabilities"))
-        assert result["inputSupported"] is False
-        assert result["inputGate"] == {"armed": True, "expiresInSec": 30, "epoch": 0}
-        assert "secret-owner" not in json.dumps(result)
-    finally:
-        gate._reset()
+    now = winapps.time.monotonic()
+    monkeypatch.setattr(winapps, "_CONTROL_STATE", {"armed": True, "armedAt": now, "owner": "secret-owner"})
+    monkeypatch.setattr(winapps, "_WINAPPS_STREAM_EPOCH", 0)
+    monkeypatch.setattr(winapps, "desktop_locked", lambda: False)
+    result = payload(call("winapps_capabilities"))
+    assert result["inputSupported"] is False
+    gate = result["inputGate"]
+    assert gate["armed"] is True and gate["epoch"] == 0
+    assert winapps.CONTROL_TIMEOUT_SECONDS - 5 <= gate["expiresInSec"] <= winapps.CONTROL_TIMEOUT_SECONDS
+    assert "secret-owner" not in json.dumps(result)

@@ -163,15 +163,68 @@ _AUDIT_LOCK = threading.Lock()
 _AUDIT_FILE_MAX_ROWS = 10_000  # per process and day: a flood of distinct rows must not fill the disk
 _AUDIT_FILE_ROWS = 0
 _AUDIT_PERSISTENT = True
+_AUDIT_DAY = ""          # the day whose file `_AUDIT_SEQ` was resumed from
+_AUDIT_PENDING: dict = {}  # seq -> row whose coalesced count is not yet in the file
 
 
 def _reset_audit() -> None:
-    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
+    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT, _AUDIT_DAY
     with _AUDIT_LOCK:
         _AUDIT.clear()
+        _AUDIT_PENDING.clear()
         _AUDIT_SEQ = 0
         _AUDIT_FILE_ROWS = 0
         _AUDIT_PERSISTENT = True
+        _AUDIT_DAY = ""
+
+
+def _last_seq(path: str) -> int:
+    """The highest `seq` in an existing daily file (its tail), so a restart does not reuse numbers."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 65536))
+            tail = f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return 0
+    best = 0
+    for line in tail:
+        try:
+            value = json.loads(line).get("seq")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(value, int) and not isinstance(value, bool):
+            best = max(best, value)
+    return best
+
+
+def _write_line(folder: str | None, payload: dict) -> None:
+    """Append one JSONL line to today's file; the cap or a failure only flips `persistent`.
+    Call with the lock held, so lines reach the file in seq order."""
+    global _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
+    if not folder:
+        return
+    if _AUDIT_FILE_ROWS >= _AUDIT_FILE_MAX_ROWS:
+        _AUDIT_PERSISTENT = False
+        return
+    try:
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
+                  "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+        _AUDIT_FILE_ROWS += 1
+    except OSError:
+        _AUDIT_PERSISTENT = False
+
+
+def _flush_counts(folder: str | None, now: float, force: bool = False) -> None:
+    """Persist the final count of coalesced rows whose window closed (or all of them, `force`).
+    One compact `{"seq", "count"}` line per coalesced row, so the file reports repeated activity."""
+    for seq, row in list(_AUDIT_PENDING.items()):
+        if force or now - row["time"] > _COALESCE_SECONDS:
+            del _AUDIT_PENDING[seq]
+            if row["count"] > 1:
+                _write_line(folder, {"seq": seq, "kind": "count", "count": row["count"]})
 
 
 def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
@@ -179,39 +232,35 @@ def audit(root: str | None, kind: str, *, audience: str, app: str | None = None,
     """Record one row. Never raises: auditing must not break the action it describes.
 
     Titles and pixels cannot be passed in. An identical row (same audience, kind, app, window and
-    code) within 60 seconds of the previous one only raises its count, so a panel retrying a
-    restricted window every few seconds writes one row a minute.
+    code) within 60 seconds of an earlier one only raises that row's count, even when other events
+    came in between, so a panel retrying a restricted window every few seconds writes one row a
+    minute; the final count reaches the file as one `{"seq", "kind": "count"}` line.
     """
-    global _AUDIT_SEQ, _AUDIT_FILE_ROWS, _AUDIT_PERSISTENT
+    global _AUDIT_SEQ, _AUDIT_DAY
     try:
         now = time.time()
+        folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
         with _AUDIT_LOCK:
-            last = _AUDIT[-1] if _AUDIT else None
-            if (last and now - last["time"] <= _COALESCE_SECONDS and last["audience"] == audience
-                    and last["kind"] == kind and last["app"] == app and last["windowId"] == window_id
-                    and last["code"] == code):
-                last["count"] += 1
-                return
+            _flush_counts(folder, now)
+            for row in reversed(_AUDIT):
+                if now - row["time"] > _COALESCE_SECONDS:
+                    break
+                if (row["audience"] == audience and row["kind"] == kind and row["app"] == app
+                        and row["windowId"] == window_id and row["code"] == code):
+                    row["count"] += 1
+                    _AUDIT_PENDING[row["seq"]] = row
+                    return
+            day = time.strftime("%Y%m%d")
+            if folder and day != _AUDIT_DAY:
+                # A console restarted on the same day continues that day's numbering.
+                _AUDIT_SEQ = max(_AUDIT_SEQ, _last_seq(os.path.join(folder, "winapps-audit-%s.jsonl" % day)))
+                _AUDIT_DAY = day
             _AUDIT_SEQ += 1
             row = {"seq": _AUDIT_SEQ, "time": now, "audience": audience, "kind": kind, "app": app,
                    "windowId": window_id, "code": code, "tool": tool, "count": 1}
             _AUDIT.append(row)
             del _AUDIT[:-_AUDIT_MAX]
-            folder = os.environ.get(AUDIT_DIR_ENV) or (os.path.join(root, "win-lab", "artifacts") if root else None)
-            if folder:
-                # Under the lock so rows reach the file in seq order; a failure or the cap only
-                # flips `persistent`, the in-memory trail keeps working.
-                if _AUDIT_FILE_ROWS >= _AUDIT_FILE_MAX_ROWS:
-                    _AUDIT_PERSISTENT = False
-                else:
-                    try:
-                        os.makedirs(folder, exist_ok=True)
-                        with open(os.path.join(folder, "winapps-audit-%s.jsonl" % time.strftime("%Y%m%d")),
-                                  "a", encoding="utf-8") as f:
-                            f.write(json.dumps(row) + "\n")
-                        _AUDIT_FILE_ROWS += 1
-                    except OSError:
-                        _AUDIT_PERSISTENT = False
+            _write_line(folder, row)
     except Exception:  # noqa: BLE001 - the audit trail is best effort by design
         pass
 
@@ -244,13 +293,15 @@ AGENT_MAX_PIXELS = 3840 * 2160  # an agent capture is base64'd into one JSON lin
 _CAPTURE_TIMEOUT = 15.0
 
 
-def _capture(hwnd: int) -> bytes:
+def _capture(hwnd: int, expected_token: str | None = None) -> bytes:
     """The raw capture with a deadline: a window that stops responding must not block the caller."""
     box: dict = {}
 
     def run() -> None:
         try:
-            box["png"] = winapps.winapps_window_screenshot(hwnd)
+            # The token (master's identity check) is passed only when the caller has one.
+            box["png"] = (winapps.winapps_window_screenshot(hwnd) if expected_token is None
+                          else winapps.winapps_window_screenshot(hwnd, expected_token))
         except BaseException as error:  # noqa: BLE001 - re-raised on the caller's thread
             box["error"] = error
 
@@ -258,7 +309,7 @@ def _capture(hwnd: int) -> bytes:
     worker.start()
     worker.join(_CAPTURE_TIMEOUT)
     if worker.is_alive():
-        raise winapps.WinAppError("That window did not respond in time; try again later", "CAPTURE_TIMEOUT")
+        raise winapps.WinAppError("That window did not respond in time; try again later", status=504, code="CAPTURE_TIMEOUT")
     if "error" in box:
         raise box["error"]
     return box["png"]
@@ -344,8 +395,31 @@ def list_windows(root: str, audience: str, *, tool: str | None = None) -> dict:
     return reply
 
 
+def require_window(root: str, window_id: object, audience: str, *, tool: str | None = None) -> dict | None:
+    """The current window if `audience` may read or act on it, else a refusal (audited).
+
+    The single check in front of every window-specific route that is not a plain capture: UI
+    Automation reads, search, the live stream and guarded input. Restricted windows are refused
+    for everyone; agents also need the app on the allowlist. On a host without the native mirror
+    there is nothing to check, and the mirror itself reports that it is unavailable.
+    """
+    _audience(audience)
+    if winapps.sys.platform != "win32":
+        return None
+    try:
+        hwnd = _window_id(window_id)
+    except GuardError as error:
+        raise _refuse(root, audience, tool, None, None, error.code, str(error)) from None
+    window = winapps.window_info(hwnd)
+    if window is None:
+        raise _refuse(root, audience, tool, None, hwnd, "WINDOW_GONE",
+                      "That window is not on screen anymore; refresh the mirror", "retry")
+    _check(root, audience, tool, window, hwnd, load_policy(root))
+    return window
+
+
 def screenshot(root: str, window_id: object, audience: str, *, tool: str | None = None,
-               _audit_success: bool = True) -> bytes:
+               _audit_success: bool = True, expected_token: str | None = None) -> bytes:
     """A PNG of one window, only if it passes the policy before and after the capture."""
     _audience(audience)
     if winapps.sys.platform != "win32":
@@ -364,7 +438,7 @@ def screenshot(root: str, window_id: object, audience: str, *, tool: str | None 
         raise _refuse(root, audience, tool, window, hwnd, "CAPTURE_TOO_LARGE",
                       "That window is too large for an agent capture")
     try:
-        png = _capture(hwnd)
+        png = _capture(hwnd, expected_token)
     except winapps.WinAppError as error:
         retry = "never" if error.code == "INVALID_WINDOW" else "retry"
         raise _refuse(root, audience, tool, window, hwnd, error.code, str(error), retry) from None
@@ -394,7 +468,7 @@ def doctor(root: str, audience: str = "agent", *, tool: str | None = None) -> di
         try:
             return screenshot(root, hwnd, audience, tool=tool, _audit_success=False)
         except GuardError as error:
-            raise winapps.WinAppError(str(error), error.code) from None
+            raise winapps.WinAppError(str(error), status=getattr(error, "status", 400), code=error.code) from None
 
     result = winapps.doctor(can_probe=can_probe, capture=capture)
     if audience == "agent":

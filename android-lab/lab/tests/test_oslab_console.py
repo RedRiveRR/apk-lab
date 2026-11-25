@@ -30,9 +30,15 @@ def states(host):
     return {lab["id"]: lab["state"] for lab in oslab.lab_catalog(REPO_ROOT, host)["labs"]}
 
 
-def test_linux_kvm_host_runs_container_labs_but_not_native_mac():
+def test_linux_kvm_host_runs_container_labs_but_not_native_mac(monkeypatch):
+    import websec_control
+    # Web Sec Lab is a native Python lab; its own readiness is covered by
+    # android-lab/lab/tests/test_websec_console.py, so this host test fixes it.
+    monkeypatch.setattr(websec_control, "lab_status",
+                        lambda root, os_name: {"id": "websec", "state": "ready"})
     expected = {
         "android": "ready", "windows": "ready", "winapps": "unavailable", "linux": "ready", "ios": "ready", "macos": "unavailable", "source": "ready",
+        "websec": "ready",
         # Web Lab follows the local engine build, not a VM provider: ready once
         # the engine binary exists, otherwise unavailable without cargo.
         "web": "ready" if os.path.isfile(os.path.join(REPO_ROOT, "web-lab", "browser", "target", "release", "weblab")) else "unavailable",

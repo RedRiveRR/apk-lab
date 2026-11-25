@@ -66,7 +66,9 @@ panic Stop, single-owner arming, and read-only windows/menu-bar/focused
 endpoints. `console/mcp_server.py` exposes the same guarded surface as a
 stdio MCP server — the model acts, the console guards, every step is
 audited. See [[ios-lab]] for permissions. The same server carries the Cleanup
-Lab tools, described in [[cleanup-lab#Dashboard pages#MCP tools (CUX-10)]].
+Lab tools, described in [[cleanup-lab#Dashboard pages#MCP tools (CUX-10)]], and the Web
+Sec Lab tools ([[web-sec#MCP tools]]). `tools/call` reads the MCP `arguments` key and
+still accepts the older `args`.
 
 
 ## macOS engine panel

@@ -27,6 +27,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import oslab  # noqa: E402
 import mcp_cleanup  # noqa: E402
+import mcp_websec  # noqa: E402
 
 REPO_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 PROTOCOL_VERSION = "2024-11-05"
@@ -257,6 +258,7 @@ TOOLS = [
 
 
 TOOLS += mcp_cleanup.TOOLS  # CUX-10: the Cleanup Lab tools share this server and its error shape
+TOOLS += mcp_websec.TOOLS  # the Web Sec Lab workbench, on the same console API and scope guard
 
 
 def _window_point(window_id: int, args: dict) -> tuple[int, int, dict]:
@@ -287,6 +289,8 @@ def tool_call(name: str, args: dict) -> dict:
     """One tool invocation against the same surface the panel drives. Returns MCP content."""
     if name in mcp_cleanup.NAMES:
         return mcp_cleanup.call(name, args, REPO_ROOT)
+    if name in mcp_websec.NAMES:
+        return mcp_websec.call(name, args, REPO_ROOT)
     if name == "macos_apps":
         return {"content": [{"type": "text", "text": json.dumps(oslab.macos_windows())}]}
     if name == "macos_get_app_state":
@@ -359,6 +363,8 @@ def run_task(args: dict) -> dict:
                 raise oslab.PlanError("macos_task cannot nest", code="INVALID_ARGS")
             if str(tool) in mcp_cleanup.NAMES:
                 raise oslab.PlanError("cleanup tools are not available inside macos_task", code="INVALID_ARGS")
+            if str(tool) in mcp_websec.NAMES:
+                raise oslab.PlanError("web sec tools are not available inside macos_task", code="INVALID_ARGS")
             result = tool_call(str(tool), step_args if isinstance(step_args, dict) else {})
             row["ok"] = True
             row["result"] = result["content"][0]["text"][:2000]
@@ -388,7 +394,9 @@ def handle(message: dict) -> dict | None:
     if method == "tools/call":
         params = message.get("params") or {}
         try:
-            result = tool_call(str(params.get("name")), params.get("args") or {})
+            # MCP clients send "arguments"; the older in-repo tests send "args".
+            arguments = params.get("arguments", params.get("args"))
+            result = tool_call(str(params.get("name")), arguments if isinstance(arguments, dict) else {})
             return {"jsonrpc": "2.0", "id": message_id, "result": {**result, "isError": False}}
         except oslab.PlanError as e:
             payload: dict = {"error": str(e)}

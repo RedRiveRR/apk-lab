@@ -37,6 +37,7 @@ Labs:
   ios | ios-lab      iOS/macOS lab (ios-lab/); native macOS uses make -C ios-lab mac-*
   linux | lin        Linux VM lab (linux-lab/)
   source             Local source/package analysis (source-lab/)
+  websec             Scope-guarded web posture assessment (web-sec/)
   cleanup            Cleanup Lab disk scan/clean engine (cleanup-lab/)
   web                Web Lab embedded browser engine (web-lab/)
   all                Run a command for Linux-host labs
@@ -1142,6 +1143,9 @@ main() {
   fi
   if [ "$target" = "source" ] || [ "$target" = "source-lab" ]; then
     exec "${SOURCE_LAB_PYTHON:-python3}" "$ROOT/source-lab/run.py" "$@"
+  fi
+  if [ "$target" = "websec" ] || [ "$target" = "web-sec" ]; then
+    exec "${WEBSEC_PYTHON:-python3}" "$ROOT/web-sec/run.py" "$@"
   fi
   if [ "$target" = "cleanup" ] || [ "$target" = "cleanup-lab" ]; then
     cmd_cleanup "$@"

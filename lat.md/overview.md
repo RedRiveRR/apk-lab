@@ -56,3 +56,12 @@ Static detection and structural maps need no VM, Node or container runtime.
 
 The local dashboard provides guarded jobs and file-backed artifact views; public
 Pages provides information and first-party workflow docs, without engine polling.
+
+## Web posture lab
+
+[[web-sec]] is the second engine-style lab: a standard-library Python engine that assesses one authorized host.
+
+It boots no guest, so its readiness is Python, writable storage and a declared
+scope — nothing else. The same scope guard that bounds the VM labs bounds every
+request it makes, and only three read-only public registries are allowed beside
+the target.

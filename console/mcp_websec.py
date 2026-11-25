@@ -12,7 +12,9 @@ scope guard, so an agent and a person get identical behaviour (the pattern is
   ``active: true`` *and* ``confirm: true`` (the workbench's confirmation dialog);
   a passive scan, like the workbench's one-click Scan, needs neither;
 * ``websec_bulk`` validates up to 20 targets, passive only; ``websec_scan_cancel``
-  stops a job; ``websec_preferences_save`` stores the workbench choices.
+  stops a job; ``websec_preferences_save`` stores the workbench choices;
+* the monitor: ``websec_monitor`` (read-only), ``websec_monitor_config`` and
+  ``websec_monitor_run`` (always passive, scope-checked).
 
 There is no raw command, path or URL argument: targets are host names the console
 validates, reports are names it validates, and every network call still goes
@@ -68,6 +70,9 @@ TOOLS = [
     {"name": "websec_scan", "description": "Run a scope-checked scan as a job and return its graded summary. A passive scan needs no confirmation; active: true runs the intrusive checks and requires confirm: true after the user approved them with written authorization.", "inputSchema": _obj({**SCAN, "confirm": {"type": "boolean"}, **WAIT}, ["target"])},
     {"name": "websec_scan_cancel", "description": "Stop a running scan or bulk job.", "inputSchema": _obj({"jobId": {"type": "string"}}, ["jobId"])},
     {"name": "websec_bulk", "description": "Validate up to 20 targets passively, one job; targets outside the scope come back as refusal rows.", "inputSchema": _obj({"targets": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20}, "preset": {"enum": ["quick", "standard", "full"], "default": "quick"}, **WAIT}, ["targets"])},
+    {"name": "websec_monitor", "description": "The opt-in passive monitor: config (targets, interval, preset, alert threshold, notifications, reminders, scope warning), per-target state, active warnings and recent events. Read-only.", "inputSchema": _obj()},
+    {"name": "websec_monitor_config", "description": "Replace the monitor config: enabled, targets (host names in scope, at most 10), intervalMinutes (60, 360, 1440, 10080), preset (quick or standard), alertOn (critical, high, medium, low), notify, reminderHours (0-168), scopeWarnDays (1-60). Monitor scans are always passive.", "inputSchema": _obj({"config": {"type": "object"}}, ["config"])},
+    {"name": "websec_monitor_run", "description": "Run one monitor check now over every configured target (passive, scope-checked). Refused while a scan is running.", "inputSchema": _obj()},
     {"name": "websec_preferences_save", "description": "Save the workbench choices on this computer (kept across restarts and app updates). Takes scan {target, preset, scheme, modules, timeout, deadline} and bulk {preset}; there is no intrusive setting.", "inputSchema": _obj({"preferences": {"type": "object", "properties": {"scan": {"type": "object"}, "bulk": {"type": "object"}}, "additionalProperties": False}}, ["preferences"])},
 ]
 NAMES = {tool["name"] for tool in TOOLS}
@@ -207,6 +212,15 @@ def _dispatch(api, name, args):
         limit = _limit(args)
         payload = {"targets": args["targets"], "preset": args.get("preset", "quick")}
         return _brief(_wait(api, api.start_bulk(payload), limit))
+    if name == "websec_monitor":
+        _check(args, [])
+        return api.monitor_status()
+    if name == "websec_monitor_config":
+        _check(args, ["config"], ["config"])
+        return api.save_monitor({"config": args["config"]})
+    if name == "websec_monitor_run":
+        _check(args, [])
+        return api.run_monitor()
     if name == "websec_preferences_save":
         _check(args, ["preferences"], ["preferences"])
         return api.save_preferences(args["preferences"])

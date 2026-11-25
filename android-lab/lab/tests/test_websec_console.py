@@ -341,3 +341,49 @@ def test_guides_come_from_the_engine(tmp_path, monkeypatch):
     payload = api.get("/api/websec/guides", {})
     assert {guide["id"] for guide in payload["guides"]} >= {"scope", "headers", "tls", "dns"}
     assert payload["byCheck"]["security_analysis"] == "headers"
+
+
+# ── monitor ──────────────────────────────────────────────────────────────────
+
+def test_monitor_status_config_and_refusals(tmp_path, monkeypatch):
+    api = _engine_api(tmp_path, monkeypatch)
+    status = api.get("/api/websec/monitor", {})
+    assert status["config"]["enabled"] is False and status["activeWarnings"] == []
+    saved = api.post("/api/websec/monitor/config", {"config": {"enabled": True, "targets": ["localhost"],
+                                                               "intervalMinutes": 360}})
+    assert saved["config"]["intervalMinutes"] == 360
+    for body in ({"config": {"preset": "full"}}, {"config": {"active": True}}, {"enabled": True}):
+        with pytest.raises(websec_api.WebSecError) as refused:
+            api.post("/api/websec/monitor/config", body)
+        assert refused.value.status == 400
+
+
+def test_monitor_ticks_never_overlap_a_scan(tmp_path, monkeypatch):
+    api = websec_api.WebSecAPI(str(tmp_path))
+    api.runner = tmp_path / "run.py"
+    api.runner.write_text("", encoding="utf-8")
+    api.storage = tmp_path / "storage"
+    ticks = []
+    monkeypatch.setattr(api, "_run", lambda args, timeout=20.0: ticks.append(args) or type("R", (), {
+        "returncode": 0, "stdout": "{}", "stderr": ""})())
+
+    class Running:
+        pid = 1
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(websec_api.subprocess, "Popen", lambda args, **kwargs: Running())
+    monkeypatch.setattr(api, "_scope_refusal", lambda target: "")
+    api.start_scan({"target": "example.test"})
+    assert api.monitor.tick_once() is False and ticks == []
+    with pytest.raises(websec_api.WebSecError) as busy:
+        api.run_monitor()
+    assert busy.value.status == 409
+    api.jobs.clear()
+    assert api.monitor.tick_once() is True and ticks[-1][:2] == ["monitor", "tick"]
+    # while the monitor scans, the workbench waits
+    api.monitor_running = True
+    with pytest.raises(websec_api.WebSecError) as busy:
+        api.start_scan({"target": "example.test"})
+    assert busy.value.status == 409 and "monitor" in str(busy.value)

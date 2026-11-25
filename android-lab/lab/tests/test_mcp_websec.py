@@ -15,7 +15,8 @@ import websec_api  # noqa: E402
 
 EXPECTED = {"websec_status", "websec_catalogue", "websec_guides", "websec_preferences", "websec_history",
             "websec_reports", "websec_report", "websec_compare", "websec_job", "websec_review", "websec_scan",
-            "websec_scan_cancel", "websec_bulk", "websec_preferences_save"}
+            "websec_scan_cancel", "websec_bulk", "websec_preferences_save", "websec_monitor",
+            "websec_monitor_config", "websec_monitor_run"}
 
 
 def rpc(name, args=None, key="arguments"):
@@ -128,3 +129,18 @@ def test_compare_defaults_to_the_latest_two_runs(lab, tmp_path):
     assert diff["grade"] == {"current": "A+", "previous": "B"}
     failed, payload = rpc("websec_compare", {"target": "nothing.here"})
     assert failed
+
+
+def test_monitor_tools_configure_and_run_through_the_engine(lab, monkeypatch):
+    forbid_scans(monkeypatch, websec_api)
+    failed, status = rpc("websec_monitor")
+    assert not failed and status["config"]["enabled"] is False and status["runner"]["alive"] is False
+    failed, refusal = rpc("websec_monitor_config", {"config": {"enabled": True, "targets": ["localhost"], "preset": "full"}})
+    assert failed and refusal["code"] == "WEBSEC_400"
+    failed, saved = rpc("websec_monitor_config", {"config": {"enabled": False, "targets": ["localhost"]}})
+    assert not failed and saved["config"]["targets"] == ["localhost"]
+    # a check now with the monitor off still runs a forced tick (the scan itself is the engine's)
+    monkeypatch.setattr(lab, "_run", lambda args, timeout=20.0: type("R", (), {
+        "returncode": 0, "stdout": json.dumps({"newEvents": [], "scanned": ["localhost"]}), "stderr": ""})())
+    failed, ran = rpc("websec_monitor_run")
+    assert not failed and ran["queued"] is False and ran["lastTick"]["scanned"] == 1

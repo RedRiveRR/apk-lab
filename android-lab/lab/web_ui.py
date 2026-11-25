@@ -363,7 +363,9 @@ class LabHttpHandler(BaseHTTPRequestHandler):
         if websec_api is None:
             self._json(501, {"error": "Web Sec Lab console support is not installed"})
             return None
-        return websec_api.api_for(REPO_ROOT)
+        api = websec_api.api_for(REPO_ROOT)
+        api.start_monitor()  # the opt-in monitor thread; it probes nothing while the monitor is off
+        return api
 
     def _websec_get(self, path: str, query: dict):
         """Web Sec Lab: readiness, catalogue, scan state, history and reports."""

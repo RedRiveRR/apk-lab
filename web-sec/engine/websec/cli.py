@@ -522,6 +522,43 @@ def prefs_command(args) -> int:
     return 0
 
 
+def monitor_command(args) -> int:
+    """status | config --save JSON | tick [--force]: the opt-in passive posture monitor."""
+    from . import monitor
+    if args.action == "status":
+        payload = monitor.status()
+    elif args.action == "config":
+        if args.save is None:
+            payload = monitor.status()
+        else:
+            try:
+                payload = monitor.save_config(json.loads(args.save))
+                payload = {**monitor.status(), "saved": True}
+            except ValueError as exc:  # MonitorConfigError and invalid JSON
+                _error(f"invalid monitor config: {exc}")
+                return 2
+            except OSError as exc:
+                _error(f"cannot save the monitor config: {exc}")
+                return 1
+    else:
+        payload = monitor.tick(force=args.force)
+    if args.json:
+        _print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if args.action == "tick":
+        _print(f"scanned {len(payload['scanned'])} target(s); {len(payload['newEvents'])} new event(s)")
+        for event in payload["newEvents"]:
+            _print(f"  [{event['kind']}] {event['target'] or 'scope'}: {event['message']}")
+        return 0
+    config = payload["config"]
+    _print(f"monitor {'on' if config['enabled'] else 'off'} · {len(config['targets'])} target(s) · every "
+           f"{config['intervalMinutes']} min · alert on {config['alertOn']} · notifications "
+           f"{'on' if config['notify'] else 'off'}")
+    for warning in payload["activeWarnings"]:
+        _print(f"  [{warning['level']}] {warning['target'] or 'scope'}: {warning.get('message', '')}")
+    return 0
+
+
 def guides_command(args) -> int:
     from .guides import guides
     payload = guides()
@@ -665,6 +702,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_prefs.add_argument("--save", default=None, metavar="JSON", help="validate and store a preferences object")
     p_prefs.add_argument("--json", action="store_true")
     p_prefs.set_defaults(func=prefs_command)
+
+    p_monitor = sub.add_parser("monitor", help="the opt-in passive monitor: status, config, tick")
+    p_monitor.add_argument("action", choices=("status", "config", "tick"))
+    p_monitor.add_argument("--save", default=None, metavar="JSON", help="with config: validate and store a config")
+    p_monitor.add_argument("--force", action="store_true", help="with tick: scan every target now")
+    p_monitor.add_argument("--json", action="store_true")
+    p_monitor.set_defaults(func=monitor_command)
 
     p_guides = sub.add_parser("guides", help="the SecOps guides behind each check")
     p_guides.add_argument("--json", action="store_true")

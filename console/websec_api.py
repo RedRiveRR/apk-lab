@@ -42,6 +42,69 @@ class WebSecError(ValueError):
 
 
 _INSTANCES: Dict[str, "WebSecAPI"] = {}
+MONITOR_POLL = 60.0
+MONITOR_TICK_TIMEOUT = 1800.0
+
+
+class MonitorRunner:
+    """The console's background thread for the opt-in posture monitor.
+
+    Every minute it runs ``monitor tick`` in the engine, which scans only the
+    targets that are due and returns at once while the monitor is off. It never
+    overlaps a workbench scan or bulk job (they share ``WebSecAPI.lock``), a failed
+    tick is recorded and retried on the next wake-up, and ``wake(force=True)`` runs
+    a tick now. Only the console process starts one; the MCP server does not.
+    """
+
+    def __init__(self, api: "WebSecAPI"):
+        self.api = api
+        self.stop = threading.Event()
+        self.woken = threading.Event()
+        self.force = False
+        self.thread: Optional[threading.Thread] = None
+        self.last = {"at": 0.0, "error": "", "events": 0, "scanned": 0}
+
+    def ensure_started(self) -> None:
+        if self.thread is not None and self.thread.is_alive():
+            return
+        self.thread = threading.Thread(target=self._loop, name="websec-monitor", daemon=True)
+        self.thread.start()
+
+    def alive(self) -> bool:
+        return self.thread is not None and self.thread.is_alive()
+
+    def wake(self, force: bool = False) -> None:
+        self.force = self.force or force
+        self.woken.set()
+
+    def _loop(self) -> None:
+        while not self.stop.is_set():
+            self.tick_once()
+            self.woken.wait(MONITOR_POLL)
+            self.woken.clear()
+
+    def tick_once(self) -> bool:
+        """One tick unless a scan is running; True when the engine ran."""
+        api = self.api
+        with api.lock:
+            if api.monitor_running or any(job["state"] == "running" and job["process"].poll() is None
+                                          for job in api.jobs.values()):
+                return False
+            api.monitor_running = True
+            force, self.force = self.force, False
+        try:
+            result = api._run(["monitor", "tick", "--json"] + (["--force"] if force else []),
+                              timeout=MONITOR_TICK_TIMEOUT)
+            payload = json.loads(result.stdout or "{}") if result.returncode == 0 else {}
+            self.last = {"at": time.time(), "error": "" if result.returncode == 0 else
+                         (result.stderr or "the monitor tick failed").strip().splitlines()[-1][:300],
+                         "events": len(payload.get("newEvents") or []), "scanned": len(payload.get("scanned") or [])}
+        except Exception as exc:  # the runner must outlive any failed tick
+            self.last = {"at": time.time(), "error": str(exc)[:300], "events": 0, "scanned": 0}
+        finally:
+            with api.lock:
+                api.monitor_running = False
+        return True
 
 
 def api_for(root: str) -> "WebSecAPI":
@@ -65,6 +128,8 @@ class WebSecAPI:
         self.storage = Path(os.environ.get("WEBSEC_STORAGE") or (self.lab / "storage"))
         self.jobs: Dict[str, dict] = {}
         self.lock = threading.Lock()
+        self.monitor_running = False
+        self.monitor = MonitorRunner(self)
         self._status_cache = (0.0, {})
 
     # ── process helpers ──────────────────────────────────────────────────────
@@ -179,6 +244,8 @@ class WebSecAPI:
         with self.lock:
             if any(job["state"] == "running" for job in self.jobs.values()):
                 raise WebSecError(409, "A scan is already running; wait for it or cancel it")
+            if self.monitor_running:
+                raise WebSecError(409, "The monitor is scanning; try again in a minute")
             if not self.runner.is_file():
                 raise WebSecError(501, "The web-sec lab is not installed in this checkout")
             job_id = uuid.uuid4().hex[:12]
@@ -386,6 +453,8 @@ class WebSecAPI:
         with self.lock:
             if any(job["state"] == "running" for job in self.jobs.values()):
                 raise WebSecError(409, "A scan is already running; wait for it or cancel it")
+            if self.monitor_running:
+                raise WebSecError(409, "The monitor is scanning; try again in a minute")
             if not self.runner.is_file():
                 raise WebSecError(501, "The web-sec lab is not installed in this checkout")
             job_id = uuid.uuid4().hex[:12]
@@ -500,6 +569,41 @@ class WebSecAPI:
     def guides(self) -> dict:
         return self._engine(["guides", "--json"])
 
+    # ── monitor ──────────────────────────────────────────────────────────────
+
+    def start_monitor(self) -> None:
+        """Start the background runner (console only; idempotent)."""
+        self.monitor.ensure_started()
+
+    def monitor_status(self) -> dict:
+        payload = self._engine(["monitor", "status", "--json"])
+        payload["runner"] = {"alive": self.monitor.alive(), "running": self.monitor_running,
+                             "lastTick": self.monitor.last}
+        return payload
+
+    def save_monitor(self, payload: dict) -> dict:
+        if not isinstance(payload, dict) or set(payload) - {"config"} or not isinstance(payload.get("config"), dict):
+            raise WebSecError(400, "send {\"config\": {...}}")
+        body = json.dumps(payload["config"], allow_nan=False)
+        if len(body.encode("utf-8")) > MAX_BODY:
+            raise WebSecError(413, "The request body is too large")
+        self._engine(["monitor", "config", "--save", body, "--json"])
+        self.monitor.wake()  # a newly enabled target is scanned on the next tick, not a day later
+        return self.monitor_status()
+
+    def run_monitor(self) -> dict:
+        """Ask for a tick now: in the runner when it is alive, else here and synchronously."""
+        with self.lock:
+            busy = self.monitor_running or any(job["state"] == "running" for job in self.jobs.values())
+        if busy:
+            raise WebSecError(409, "A scan is running; the monitor checks again when it finishes")
+        if self.monitor.alive():
+            self.monitor.wake(force=True)
+            return {"queued": True}
+        self.monitor.force = True
+        self.monitor.tick_once()
+        return {"queued": False, "lastTick": self.monitor.last}
+
     # ── routing ──────────────────────────────────────────────────────────────
 
     def get(self, path: str, query: dict) -> dict:
@@ -509,6 +613,8 @@ class WebSecAPI:
             return self.preferences()
         if path == "/api/websec/guides":
             return self.guides()
+        if path == "/api/websec/monitor":
+            return self.monitor_status()
         if path == "/api/websec/compare":
             first = lambda key: (query.get(key) or [""])[0]  # noqa: E731
             return self.compare(first("target"), first("old"), first("new"))
@@ -549,6 +655,10 @@ class WebSecAPI:
             return self.save_preferences(data)
         if path == "/api/websec/plan":
             return self.plan(data)
+        if path == "/api/websec/monitor/config":
+            return self.save_monitor(data)
+        if path == "/api/websec/monitor/run":
+            return self.run_monitor()
         raise WebSecError(404, f"Unknown Web Sec Lab route: {path}")
 
     def delete(self, path: str) -> dict:

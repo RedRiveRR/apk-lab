@@ -39,7 +39,7 @@ For locations, the state of the branch and the continuation checklist, read
 | Cloudflare origin view | adapted (`origin_exposure`, passive) | findings only |
 | Nmap → NVD correlation | adapted (`port_exposure --cve-lookup`) | findings only |
 | Bulk domain validation | done (CLI `bulk --csv`, console endpoint, workbench form) | per-target grade table with refusal rows |
-| Scan history | done (JSONL + dashboard timeline) | per-target timeline, open from a row; run-to-run diff via `scan --diff` |
+| Scan history | done (JSONL + dashboard timeline) | per-target timeline, open or compare from a row; Compare runs row (`compare`, `/api/websec/compare`) |
 | Dependency / system health | done (`doctor`, console readiness) | lab page |
 | React source-leak view | done (`react_exposure`) | findings only |
 | React RCE / React2Shell probes | excluded by policy | — |
@@ -47,7 +47,7 @@ For locations, the state of the branch and the continuation checklist, read
 | SQLite database manager | replaced by JSONL | no manager UI (intentional) |
 | Settings screen | done in the workbench (pacing overrides with engine bounds, environment, history limits) | — |
 | Command palette | done (global palette entries) | — |
-| In-app SecOps guides | knowledge docs exist | **missing** as modals |
+| In-app SecOps guides | done (`websec/guides.py`, `guides --json`, console, MCP) | modal from the header, each finding and each check |
 
 ## Completed in this pass
 
@@ -75,13 +75,78 @@ For locations, the state of the branch and the continuation checklist, read
   service map, one-level-deep content-scan chunks, the CDN IPv4 range table in
   `origin_exposure`, and `scan --diff`.
 
+## Completed in the one-click pass
+
+- **One-click workbench.** One primary Scan (shortcut `S`) with a live summary; every
+  other ability is a collapsed row with a one-line summary (Scan options, Reports,
+  Compare runs, Bulk validation, History, Catalogue, Guides, Environment). The
+  active-scan dialog lists only the intrusive checks the selection would run
+  (`modules --json` now carries preset membership).
+- **Saved choices** in the engine store (`websec/preferences.py`, `prefs`,
+  `/api/websec/preferences`): versioned, validated, unknown check ids kept, never the
+  intrusive mode. The default target is the saved one, else the last scanned host.
+- **MCP tools** (`console/mcp_websec.py`): 14 tools, read-only, review
+  (`websec_review` = `plan`, no network), scan as a job with `confirm: true` for
+  intrusive checks, passive bulk. `mcp_server.py` now reads the MCP `arguments` key.
+- **Compare UI** (`compare`, `/api/websec/compare`, Compare runs row, Compare from a
+  history entry) and **SecOps guides as modals**.
+
 ## Remaining
 
-1. **Compare UI in the workbench.** `scan --diff` does the matching; the timeline
-   still needs a console endpoint and a panel to show a run-to-run diff.
-2. **In-app SecOps guides as modals** (knowledge docs exist; no modal surface).
-3. Optional polish: expose `cveLookup` and module selection in the bulk form once
-   a real workload asks for them.
+### UX standard (lat.md/ux-readiness.md)
+
+1. **Signal outside the window.** A desktop notification and banner when a run adds a
+   critical/high finding or the scope is about to expire; escalate, repeat while
+   true, switch off. Needs the monitor (engine item 3).
+2. **Visual pass** after the functional work: 390 px and tablet, 200% zoom, both
+   themes, `fa`/`ar` right-to-left, coarse-pointer size of the severity chips,
+   drill-down toggles and check boxes.
+3. Use `/api/websec/plan` in the confirmation dialog so the engine's scope verdict
+   is shown, not only the client-side preset table.
+4. `Guide for <check>` is a dynamic accessible label and is not translated.
+
+### Engine port gaps
+
+1. **CI gates** from WebAnalyzer: `--fail-on <severity>`, `--baseline <report>`,
+   `--summary <file>` (`$GITHUB_STEP_SUMMARY`), `compare --fail-on-new`, and an
+   `action.yml` wrapper.
+2. **CWE / OWASP Top 10 mapping** per finding (`utils/taxonomy.py`), carried into
+   SARIF and the findings UI.
+3. **Monitor and notifications** (`monitor.py`, `utils/notify.py`): recurring scans
+   of in-scope targets, alert on a regression; MCP tools for its config.
+4. **Content scan depth**: the wider pattern registry, entropy scoring and a static
+   DOM-XSS source→sink pass over served scripts (all passive).
+5. HTML report cover (`--client`, `--author`, `--title`), `scan -l <file>` / stdin,
+   `--concurrency`.
+6. Decide on WebAnalyzer's Overview / Threat-intel / Network-map pages: port an
+   overview or record the exclusion.
+
+### WebQ gaps
+
+1. Dedicated drill-down panels for `contact_spy`, `subdomain_discovery`,
+   `content_scan`, `subdomain_takeover` and `origin_exposure` (generic panel today).
+2. PDF and DOCX export (or document printing the HTML report).
+3. History management: favourite, delete a run, delete several, clear all, global
+   statistics.
+4. Reference pages (ports, headers, status codes, domains): fold into the guides or
+   record the exclusion.
+5. React signatures view for `react_exposure`.
+
+### Documentation
+
+1. Record in `knowledge/upstream.md`: WebAnalyzer's API Security Scanner is excluded
+   (an active fuzzer), `verify` ownership proof is replaced by `scope.json`.
+2. `web-sec/README.md`: the `plan`, `compare`, `prefs` and `guides` commands and the
+   MCP tools.
+
+### Landing
+
+1. Commit the one-click pass (not committed yet).
+2. Optional: `cveLookup` and module selection in the bulk form.
+3. Full verification block, then e2e in an owner-approved mode: the Web Sec spec,
+   then `--full` once before the PR. E2e is deliberately held until every item above
+   is done.
+4. Push and open the PR.
 
 ## Verification expected for each item
 

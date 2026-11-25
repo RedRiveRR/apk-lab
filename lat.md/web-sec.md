@@ -51,9 +51,21 @@ mode 0700/0600.
 `./labctl websec <command>` runs [[web-sec/run.py]]. The console answers `/api/websec/…` behind the localhost guard.
 
 `scan --diff <report.json>` compares a run with a stored report of the same target
-(findings match on module and kind), `bulk --csv` writes one row per target and
-exits with the worst grade, and `scan --progress <file>` streams JSONL per-module
-events for the console.
+(findings match on module and kind), `compare --target --old --new` does the same for
+two stored runs, `bulk --csv` writes one row per target and exits with the worst
+grade, and `scan --progress <file>` streams JSONL per-module events for the console.
+`plan <target>` is the no-network review: it normalizes the target, asks the scope
+guard and lists which checks would run, holding intrusive ones back without
+`--active`. `modules --json` also lists each preset's checks, and `guides --json`
+prints the SecOps guides.
+
+[[web-sec/engine/websec/preferences.py]] stores the workbench choices (target,
+preset, protocol, check selection, pacing, bulk preset) as `preferences.json` in the
+private storage folder; `prefs --json` reads and `prefs --save` validates and writes
+them. A store from another version is read, unknown check ids are kept, corruption
+falls back to defaults with a `configError`. Intrusive mode is deliberately not a
+preference. [[web-sec/engine/websec/guides.py]] holds the guides as data, each naming
+the checks it explains; a test keeps every catalogue check in exactly one guide.
 
 [[console/websec_control.py#lab_status]] reports Python, storage and scope
 separately, so the dashboard can say what is missing, and
@@ -62,28 +74,54 @@ command the operator confirms. [[console/websec_api.py#WebSecAPI]] starts one sc
 child process at a time, tails the engine's JSONL progress file so a running job
 reports per-check state, runs bounded passive bulk validation through the engine,
 reads the report back with a size cap, and validates every stored report name
-before opening it.
+before opening it. It also serves `/api/websec/preferences` (GET, POST),
+`/api/websec/plan` (POST), `/api/websec/compare` and `/api/websec/guides` through
+the engine; an engine usage error answers 400.
+
+## MCP tools
+
+[[console/mcp_websec.py]] adds the Web Sec Lab to the os-lab MCP server on the same console API, engine and scope guard as the workbench.
+
+Read-only tools cover status, the catalogue (with each check's guide), guides,
+preferences, history, reports, one rendered report, compare and job state.
+`websec_review` is the plan and sends nothing to the target. `websec_scan` runs a
+scope-checked scan as a job; `active: true` also needs `confirm: true`, the
+workbench's confirmation dialog. `websec_bulk` is passive only. Tools take host
+names and report names, never paths, URLs or commands, and are refused inside
+`macos_task`. Tests: [[android-lab/lab/tests/test_mcp_websec.py]].
 
 ## Dashboard
 
-`/web-sec/` is the workbench, implemented in [[dashboard/src/views/web-sec/pages.tsx]].
+`/web-sec/` is the workbench, implemented in [[dashboard/src/views/web-sec/pages.tsx]] on the one-click standard of [[lat.md/ux-readiness.md#One-click standard]].
 
-It renders the engine catalogue plus a catalogue table (description, group,
-weight, upstream, active flag), a target form with preset, protocol, pacing
-overrides and the `--active` confirmation dialog, live per-check progress,
-findings filtered by severity, per-module drill-down panels over
-`report.modules[].data`, stored reports with a Markdown preview and
-JSON/SARIF/HTML/Markdown downloads, bulk validation with a per-target grade
-table, and a per-target history timeline that opens stored reports. The public
-`/labs/websec/` page has its own read-only readiness and boundaries view.
-Module names come from the engine catalogue, so the dashboard translates only its
-own chrome.
+One primary action, **Scan** (shortcut `S` when no field has focus), goes from a
+target to a graded report; a one-line summary names the preset, protocol and check
+count. The intrusive opt-in sits beside it, is asked again in the confirmation
+dialog for the checks the selection would actually run, and is never saved.
+Findings, severity filters, per-module drill-down panels and a Guide button per
+finding and check follow the report.
+
+Everything else is a collapsed row of one list with a live summary: Scan options
+(preset, protocol, pacing, check selection; saved on this computer through the
+engine store), Reports (Markdown preview and JSON/SARIF/HTML/Markdown downloads),
+Compare runs ([[dashboard/src/views/web-sec/compare.tsx]], latest two runs by
+default, an attention dot when a run adds a critical or high finding), Bulk
+validation, History (open a run, or compare it with the one before), Catalogue,
+Guides and Environment. A row opens when a link or button targets its id.
+[[dashboard/src/views/web-sec/guides.tsx]] shows the SecOps guides as a modal,
+straight on the guide for the check it was opened from. The default target is the
+saved one, else the most recently scanned host. The public `/labs/websec/` page has
+its own read-only readiness and boundaries view. Module names come from the engine
+catalogue, so the dashboard translates only its own chrome and the guide text.
 
 ## Tests
 
 The engine suite runs offline: [[web-sec/engine/tests/conftest.py]] replaces DNS, HTTP, TLS, WHOIS and port transports with fakes.
 
 `cd web-sec/engine && python3 -m pytest -q` also exercises the DNS codec, the TLS
-DER parser and every report format. Console contracts live in
-[[android-lab/lab/tests/test_websec_console.py]]; the workbench in
-[[dashboard/e2e/web-sec.spec.ts]].
+DER parser and every report format; [[web-sec/engine/tests/test_workbench.py]]
+covers preferences, plan, compare and guide coverage. Console contracts live in
+[[android-lab/lab/tests/test_websec_console.py]], the MCP tools in
+[[android-lab/lab/tests/test_mcp_websec.py]], and the workbench in
+[[dashboard/e2e/web-sec.spec.ts]], including a case that every row is still listed
+and opens.

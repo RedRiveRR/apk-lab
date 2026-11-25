@@ -93,6 +93,14 @@ Implemented:
   form, exports, active-scan dialog, per-target history timeline, live per-check
   progress, pacing overrides, mobile pass at 390 px; dedicated public page at
   `/labs/websec/`; 8 locales kept in step (3,015 keys).
+- One-click pass (uncommitted at the time of writing): the workbench follows the
+  one-click standard (primary Scan with shortcut `S`, collapsed rows with live
+  summaries), choices persist in `web-sec/storage/preferences.json` through the
+  engine, Compare runs and SecOps guide modals exist, and `console/mcp_websec.py`
+  gives agents 14 tools on the same API (review never scans; intrusive scans need
+  `confirm: true`). Engine 83 tests, console + MCP 34 tests (with the Cleanup MCP
+  suite), `npm run check`, `npm run test:i18n` (3,096 keys), `npm run build`,
+  `lat check`.
 - `web-sec/TODO.md` records what is done and what remains.
 
 Verified in this session: engine 66 tests, console 19 tests, `npm run check`,
@@ -123,22 +131,21 @@ they need a run in an owner-approved mode before landing (see below).
 
 ## 5. Remaining work
 
-Full detail is in `web-sec/TODO.md`. What is left after this session:
+The full list is in `web-sec/TODO.md` under **Remaining**: UX-standard leftovers
+(notifications outside the window, the visual pass, plan-backed confirmation),
+engine port gaps (CI gates, CWE/OWASP mapping, monitor + notify, content-scan
+depth, report cover and target lists), WebQ gaps (dedicated panels, PDF/DOCX,
+history management, reference pages, React signatures), two documentation
+items and the landing steps.
 
-| # | Item | Start here |
-|---|---|---|
-| 1 | Compare UI in the workbench: `scan --diff` does the matching; add a console endpoint and a timeline panel that shows a run-to-run diff | `console/websec_api.py`, `dashboard/src/views/web-sec/pages.tsx` |
-| 2 | In-app SecOps guides as modals (the knowledge docs exist; no modal surface yet) | `dashboard/src/views/web-sec/pages.tsx` |
-
-Non-blocking: `cveLookup` and module selection in the bulk form; console-only
-routes stay out of the localized crawl (do not re-add `/web-sec/` to
-`crawl.spec.ts` MAIN_ROUTES).
+The owner holds e2e until every other item is done, then runs it once before the
+merge.
 
 Verification expected before landing:
 
 ```bash
-cd web-sec/engine && python3 -m pytest -q        # 66 tests
-cd android-lab/lab && ../../.venv-test/bin/python -m pytest tests/test_websec_console.py -q  # 19 tests
+cd web-sec/engine && python3 -m pytest -q        # 83 tests
+cd android-lab/lab && ../../.venv-test/bin/python -m pytest tests/test_websec_console.py tests/test_mcp_websec.py -q  # 23 + 6 tests
 cd dashboard && npm run check && npm run test:i18n && npm run build && git restore dashboard/dist
 lat check
 scripts/run-tests.sh --changed
